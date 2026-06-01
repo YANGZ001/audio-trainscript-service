@@ -1,0 +1,20 @@
+{
+  "name": "audio-trainscript-service",
+  "version": "1.0.0",
+  "description": "Bilibili audio transcription microservice using Gemini ASR",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "axios": "^1.7.0",
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

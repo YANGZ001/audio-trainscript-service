@@ -10,7 +10,7 @@ This document partitions the project into an initial launch phase (Bilibili inte
 
 1. **Decoupled API-Only Service**: Build an independent audio transcription microservice (`audio-trainscript-service`) running in a separate Docker container.
 2. **Bilibili Audio Ingestion**: Resolve and download audio streams directly from Bilibili videos using the existing browser session token.
-3. **ASR using Gemini API**: Leverage Gemini 3.1 Flash Lite (via the Free Tier API) to perform high-quality, speech-to-text transcribing with timestamps.
+3. **ASR using Gemini API**: Leverage Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`, via the Free Tier API) to perform high-quality, speech-to-text transcribing with timestamps.
 4. **Real-Time Progress Tracking**: Stream transcription status updates (Downloading $\rightarrow$ Uploading to Gemini $\rightarrow$ Transcribing $\rightarrow$ Done) to the caller using Server-Sent Events (SSE).
 
 ## Future Todo / Backlog (Out of Scope for Initial Version)
@@ -33,5 +33,6 @@ This document partitions the project into an initial launch phase (Bilibili inte
 
 ## Constraints
 
-- **Rate Limits**: The service must respect Google AI Studio Free Tier constraints (15 RPM / 1500 RPD).
-- **Environment**: Deployed in a Docker container on a dedicated Ubuntu server located in Singapore, running within a private Tailscale network.
+- **Rate Limits**: The service must respect Google AI Studio Free Tier constraints (15 RPM / 1500 RPD — verify against current quota page before deploy, as limits change).
+- **Session Token**: `BILIBILI_SESSION_TOKEN` is injected as an environment variable at container startup via `docker-compose.yml`. Rotating the token requires a container restart.
+- **Environment**: Deployed in a Docker container on a dedicated Ubuntu server located in Singapore, running within a private Tailscale network. `bilibili-copilot-web` reaches this service via its Tailscale MagicDNS hostname.

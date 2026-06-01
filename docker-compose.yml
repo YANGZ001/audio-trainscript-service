@@ -1,0 +1,10 @@
+services:
+  audio-trainscript-service:
+    build: .
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    environment:
+      - BILIBILI_SESSION_TOKEN=${BILIBILI_SESSION_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=${PORT:-3001}
+    restart: unless-stopped

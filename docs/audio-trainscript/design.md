@@ -19,11 +19,13 @@ Client (Copilot Web)                     Audio Trainscript Service         Bilib
         │                                         │←─ Return audio stream URL ─────────┤
         │                                         ├─ Download audio to temp disk       │
         │                                         ├─ Upload file to Gemini File API ──→│
-        │                                         ├─ Invoke Gemini 3.1 Flash Lite ASR ──→│
+        │                                         ├─ Invoke gemini-3.1-flash-lite ASR ───→│
         │                                         │←─ Return JSON timestamped text ────┤
         │                                         ├─ Delete temp audio file            │
         │←─ SSE Stream: Progress & JSON Result ───┤                                    │
 ```
+
+**Error paths**: If Bilibili returns 403/404, or Gemini returns an error or quota-exceeded response, the service must emit an `error` SSE event and close the stream. If the process crashes after uploading to Gemini File API but before deleting, the orphaned cloud file must be cleaned up on the next startup (startup scan via `googleai.listFiles()` deletes any files older than 1 hour).
 
 ### 2. Google Drive & Local Upload Flow (Future Todo)
 - To be implemented when Service Account OAuth and file upload controllers are introduced.
@@ -32,11 +34,23 @@ Client (Copilot Web)                     Audio Trainscript Service         Bilib
 
 ## API Design
 
+### `GET /health`
+Health check. Returns `200 OK` with body `{"status":"ok"}`. Used by Docker and Tailscale monitoring.
+
+---
+
 ### `POST /api/transcribe`
 Submit a Bilibili video URL for transcription. Returns a Server-Sent Events (SSE) stream.
 
-**Headers**
+**Audio limits**: Maximum 200MB audio file or 3 hours duration. Requests exceeding these limits receive an `error` SSE event immediately after the download step.
+
+**Request headers**
 - `Content-Type: application/json`
+
+**Response headers** (set by Express before streaming begins)
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache`
+- `Connection: keep-alive`
 
 **Request Body**
 ```json
@@ -47,7 +61,7 @@ Submit a Bilibili video URL for transcription. Returns a Server-Sent Events (SSE
 ```
 
 **SSE Event Types**
-- `downloading`: Sent while downloading audio from B站. Payload: `{"progress": number}`
+- `downloading`: Sent while downloading audio from B站. Payload: `{"progress": number}` (integer 0–100)
 - `uploading`: Sent while uploading file to Gemini File API.
 - `transcribing`: Sent while Gemini 3.1 Flash Lite is running the transcription.
 - `done`: Final success event. Payload: The JSON transcription array:
@@ -61,6 +75,18 @@ Submit a Bilibili video URL for transcription. Returns a Server-Sent Events (SSE
 
 ---
 
+## Environment Configuration
+
+| Variable | Required | Description |
+|---|---|---|
+| `BILIBILI_SESSION_TOKEN` | Yes | Browser session cookie for resolving restricted audio streams. Injected at container startup via `docker-compose.yml`. Rotate by restarting the container. |
+| `GEMINI_API_KEY` | Yes | Google AI Studio free-tier API key for `gemini-3.1-flash-lite`. |
+| `PORT` | No | HTTP listen port (default: `3000`). |
+
+**Networking**: `bilibili-copilot-web` calls this service using its Tailscale MagicDNS hostname (e.g. `http://<hostname>:3000`). No shared Docker network is required.
+
+---
+
 ## Directory Structure (Initial Version)
 
 ```
@@ -70,7 +96,7 @@ audio-trainscript-service/
   │    ├── services/
   │    │    ├── bilibili.ts     # Bilibili playurl resolver & audio stream downloader
   │    │    └── gemini.ts       # Gemini File API uploader & 3.1 Flash Lite ASR runner
-  │    └── index.ts             # Express/Fastify server & SSE route handler
+  │    └── index.ts             # Express server & SSE route handler
   ├── Dockerfile
   ├── docker-compose.yml
   ├── package.json
