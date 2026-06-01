@@ -21,8 +21,10 @@ const TRANSCRIPTION_PROMPT =
 export async function transcribeAudio(
   filePath: string,
   onTranscribing: () => void,
+  model?: string,
 ): Promise<Segment[]> {
   const ai = createClient();
+  const modelToUse = model ?? GEMINI_MODEL;
   let uploadedName: string | undefined;
 
   try {
@@ -53,7 +55,7 @@ export async function transcribeAudio(
     onTranscribing();
 
     const result = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+      model: modelToUse,
       contents: [
         {
           role: 'user',

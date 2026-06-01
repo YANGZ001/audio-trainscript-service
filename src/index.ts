@@ -76,9 +76,10 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     if (clientGone) return;
     sendEvent('uploading', {});
 
+    const model = typeof req.query.model === 'string' ? req.query.model : undefined;
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
-    });
+    }, model);
 
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
@@ -124,11 +125,13 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     if (!res.writableFinished) clientGone = true;
   });
 
+  const model = typeof req.query.model === 'string' ? req.query.model : undefined;
+
   try {
     if (!clientGone) sendEvent('uploading', {});
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
-    });
+    }, model);
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

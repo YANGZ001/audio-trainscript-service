@@ -204,6 +204,25 @@ Pre-stream errors (wrong file type, file too large, missing field) are returned 
 
 ---
 
+## Model Selection
+
+Both endpoints accept an optional `?model=` query parameter. If omitted, the server defaults to `gemini-3.1-flash-lite`.
+
+```bash
+# Via shell scripts — set the MODEL env var
+MODEL=gemini-2.5-flash ./transcribe-file.sh interview.m4a
+MODEL=gemini-2.5-pro   ./test.sh 'https://www.bilibili.com/video/...'
+
+# Via raw curl
+curl -s --no-buffer -N \
+  -F "file=@interview.m4a;type=audio/mp4" \
+  http://zyfun-ubuntu26:3001/api/upload-transcribe?model=gemini-2.5-flash
+```
+
+An invalid model name is rejected by the Gemini API and surfaces as an `error` SSE event — the service itself does not validate model names.
+
+---
+
 ## Error Reference
 
 | Error message | Likely cause |

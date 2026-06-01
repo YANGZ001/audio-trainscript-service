@@ -2,6 +2,7 @@
 set -euo pipefail
 
 HOST="${TRANSCRIBE_HOST:-http://localhost:3001}"
+MODEL="${MODEL:-}"
 URL="${1:-}"
 
 if [[ -z "$URL" ]]; then
@@ -10,14 +11,18 @@ if [[ -z "$URL" ]]; then
   exit 1
 fi
 
+ENDPOINT="$HOST/api/transcribe"
+[[ -n "$MODEL" ]] && ENDPOINT="${ENDPOINT}?model=${MODEL}"
+
 echo "Host : $HOST"
 echo "Video: $URL"
+[[ -n "$MODEL" ]] && echo "Model: $MODEL"
 echo ""
 
 curl -s --no-buffer -N \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg url "$URL" '{type:"bilibili",url:$url}')" \
-  "$HOST/api/transcribe" \
+  "$ENDPOINT" \
 | awk '
 /^event: / { evt = substr($0, 8) }
 /^$/        { evt = "" }

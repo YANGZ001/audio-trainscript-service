@@ -2,6 +2,7 @@
 set -euo pipefail
 
 HOST="${TRANSCRIBE_HOST:-http://zyfun-ubuntu26:3001}"
+MODEL="${MODEL:-}"
 FILE="${1:-}"
 OUTPUT="${2:-}"
 
@@ -11,14 +12,18 @@ if [[ -z "$FILE" ]]; then
   exit 1
 fi
 
+ENDPOINT="$HOST/api/upload-transcribe"
+[[ -n "$MODEL" ]] && ENDPOINT="${ENDPOINT}?model=${MODEL}"
+
 echo "Host   : $HOST"
 echo "File   : $FILE"
 [[ -n "$OUTPUT" ]] && echo "Output : $OUTPUT"
+[[ -n "$MODEL"  ]] && echo "Model  : $MODEL"
 echo ""
 
 curl -s --no-buffer -N \
   -F "file=@${FILE};type=audio/mp4" \
-  "$HOST/api/upload-transcribe" \
+  "$ENDPOINT" \
 | awk -v out="$OUTPUT" -v src="$(basename "$FILE")" '
 /^event: / { evt = substr($0, 8) }
 /^$/        { evt = "" }
