@@ -7,6 +7,7 @@ COPY src/ ./src/
 RUN npm run build
 
 FROM node:22-alpine
+ENV NODE_ENV=production
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY package*.json ./

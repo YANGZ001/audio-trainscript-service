@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import * as fs from 'fs';
+import logger from './logger';
 import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
@@ -35,7 +36,7 @@ function runMiddleware(req: Request, res: Response, fn: Function): Promise<void>
 const PORT = Number(process.env.PORT ?? 3000);
 
 cleanupOrphanedGeminiFiles().catch((err) =>
-  console.error('Startup Gemini cleanup failed:', err),
+  logger.error({ err }, 'Startup Gemini cleanup failed'),
 );
 
 app.get('/health', (_req: Request, res: Response) => {
@@ -73,7 +74,8 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
 
   try {
     bvid = extractBvid(url);
-    console.log(`[INFO] [${bvid}] transcribe request received`);
+    const log = logger.child({ bvid });
+    log.info('transcribe request received');
 
     await downloadBilibiliAudio(url, tempFile, (progress) => {
       if (!clientGone) sendEvent('downloading', { progress });
@@ -81,7 +83,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
 
     const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
     const downloadMb = (fs.statSync(tempFile).size / (1024 * 1024)).toFixed(1);
-    console.log(`[INFO] [${bvid}] download complete (${downloadMb} MB, ${downloadSec}s)`);
+    log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
 
     if (clientGone) return;
     sendEvent('uploading', {});
@@ -92,12 +94,12 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     }, model, bvid);
 
     const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[INFO] [${bvid}] transcription done (${transcript.length} segments, ${totalSec}s total)`);
+    log.info({ segments: transcript.length, sec: totalSec }, 'transcription done');
 
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[ERROR] [${bvid ?? 'transcribe'}] error —`, err);
+    logger.child({ bvid: bvid ?? 'transcribe' }).error({ err }, 'request error');
     sendEvent('error', { error: message });
   } finally {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
@@ -139,7 +141,8 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     if (!res.writableFinished) clientGone = true;
   });
 
-  console.log(`[INFO] [${fileTag}] upload-transcribe request received`);
+  const log = logger.child({ fileTag });
+  log.info('upload-transcribe request received');
   const model = typeof req.query.model === 'string' ? req.query.model : undefined;
 
   try {
@@ -147,11 +150,11 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
     }, model, fileTag);
-    console.log(`[INFO] [${fileTag}] transcription done (${transcript.length} segments)`);
+    log.info({ segments: transcript.length }, 'transcription done');
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[ERROR] [${fileTag}] error —`, err);
+    log.error({ err }, 'request error');
     sendEvent('error', { error: message });
   } finally {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
@@ -160,5 +163,5 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Audio Trainscript Service listening on port ${PORT}`);
+  logger.info({ port: PORT }, 'Audio Trainscript Service listening');
 });
