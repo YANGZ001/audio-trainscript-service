@@ -9,8 +9,8 @@
 
 ## Phase 2: Client Scripts
 
-- [ ] Add `MODEL` env var support to `test.sh`
-- [ ] Add `MODEL` env var support to `transcribe-file.sh`
+- [x] Add `MODEL` env var support to `test.sh`
+- [x] Add `MODEL` env var support to `transcribe-file.sh`
 
 ## Phase 3: Docs
 
@@ -19,7 +19,7 @@
 - [x] `docs/model-selection/tasks.md`
 - [x] `docs/model-selection/context.md`
 - [x] `docs/model-selection/test_plan.md`
-- [ ] Update `USAGE.md`
+- [x] Update `USAGE.md`
 
 ## Acceptance Criteria
 
