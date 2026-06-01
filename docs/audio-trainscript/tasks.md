@@ -1,19 +1,20 @@
 # Audio Trainscript Service — Tasks
 
-## Phase 1: Infrastructure & Downloader Setup
-- [ ] Initialize Node.js TypeScript project.
-- [ ] Set up Dockerfile and `docker-compose.yml` configurations.
-- [ ] Implement Bilibili audio downloader resolving playurl audio stream via B站 player/playurl API.
-- [ ] Support utilizing the existing `BILIBILI_SESSION_TOKEN` cookie to resolve restricted/high-definition audio streams.
+## Phase 1: Infrastructure & Downloader Setup ✅
+- [x] Initialize Node.js TypeScript project.
+- [x] Set up Dockerfile and `docker-compose.yml` configurations.
+- [x] Implement Bilibili audio downloader resolving playurl audio stream via B站 player/playurl API.
+- [x] Support utilizing the existing `BILIBILI_SESSION_TOKEN` cookie to resolve restricted/high-definition audio streams.
 
-## Phase 2: Gemini Integration & Server-Sent Events (SSE)
-- [ ] Integrate `@google/generativeai` SDK.
-- [ ] Implement file upload to Gemini File API and ensure garbage collection (deleting both local temp file and Google cloud file after request completion).
-- [ ] Implement startup scan that deletes any orphaned Gemini cloud files older than 1 hour (crash-recovery cleanup).
-- [ ] Write system prompt instructing `gemini-3.1-flash-lite` to return a structured JSON array of timestamps and content.
-- [ ] Implement Express server with `GET /health` and `POST /api/transcribe` (SSE), enforcing 200MB / 3-hour audio limits.
-- [ ] Set SSE response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
-- [ ] Implement error-path SSE events for Bilibili 403/404, Gemini quota errors, and size/duration limit violations.
+## Phase 2: Gemini Integration & Server-Sent Events (SSE) ✅
+- [x] Integrate `@google/genai` SDK.
+- [x] Implement file upload to Gemini File API and ensure garbage collection (deleting both local temp file and Google cloud file after request completion).
+- [x] Implement startup scan that deletes any orphaned Gemini cloud files older than 1 hour (crash-recovery cleanup).
+- [x] Write system prompt instructing `gemini-3.1-flash-lite` to return a structured JSON array of timestamps and content.
+- [x] Implement Express server with `GET /health` and `POST /api/transcribe` (SSE), enforcing 200MB / 3-hour audio limits.
+- [x] Set SSE response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
+- [x] Implement error-path SSE events for Bilibili 403/404, Gemini quota errors, and size/duration limit violations.
+- [x] Repair Gemini response quirks: missing key quote, MM:SS timestamps past 60s, missing `"to"` key entirely.
 
 ## Phase 3: Copilot Web Integration
 - [ ] Update `bilibili-copilot-web`'s `lib/bilibili.ts` to call the transcription service (via Tailscale MagicDNS hostname) when the subtitle lookup returns empty or fails with "字幕获取失败".
@@ -25,6 +26,8 @@
 ---
 
 ## Future Todo Backlog (Deferred Features)
+- [ ] **Bilibili subtitle overflow bug** (`bilibili-copilot-web`): The legacy `player/v2?aid=&cid=` API overflows 32-bit int for modern videos, returning subtitles from unrelated older videos. Fix: switch to `web-interface/view?bvid=` and read `.data.subtitle.list` directly.
+- [ ] **Redis caching for ASR results**: Cache successful transcripts in Upstash Redis at `bilibili:subtitle:${bvid}:${page}` with a 7-day TTL to avoid re-transcribing the same video.
 - [ ] **Google Drive Service**: Implement GDrive download utilizing Service Account `.json` credentials.
 - [ ] **Local Upload Support**: Configure multipart uploads for `.m4a` files up to 100MB.
 - [ ] **SQLite Persistence & TTL**:
