@@ -6,8 +6,8 @@ FILE="${1:-}"
 OUTPUT="${2:-}"
 
 if [[ -z "$FILE" ]]; then
-  echo "Usage: ./test-upload.sh <path-to-audio.m4a> [output.md]"
-  echo "   eg: ./test-upload.sh interview.m4a transcript.md"
+  echo "Usage: ./transcribe-file.sh <path-to-audio.m4a> [output.md]"
+  echo "   eg: ./transcribe-file.sh interview.m4a transcript.md"
   exit 1
 fi
 
@@ -19,49 +19,39 @@ echo ""
 curl -s --no-buffer -N \
   -F "file=@${FILE};type=audio/mp4" \
   "$HOST/api/upload-transcribe" \
-| python3 -c "
-import sys, json, os
-
-output_path = sys.argv[1] if len(sys.argv) > 1 else ''
-source_name = os.path.basename('${FILE}')
-
-evt = ''
-for line in sys.stdin:
-    line = line.rstrip()
-    if line.startswith('event:'):
-        evt = line.split(' ', 1)[1]
-        if evt == 'uploading':
-            print('[uploading to Gemini...]', flush=True)
-        elif evt == 'transcribing':
-            print('[transcribing...]', flush=True)
-        elif evt == 'error':
-            pass
-    elif line.startswith('data:') and evt:
-        payload = line.split(' ', 1)[1]
-        if evt == 'done':
-            segs = json.loads(payload)
-            print()
-            print(f'=== TRANSCRIPT ({len(segs)} segments) ===')
-            lines = []
-            for s in segs:
-                from_s = s.get('from', 0)
-                to_s   = s.get('to', 0)
-                text   = s.get('content') or s.get('text') or repr(s)
-                mins_f, secs_f = int(from_s) // 60, from_s % 60
-                mins_t, secs_t = int(to_s)   // 60, to_s   % 60
-                ts = f'{mins_f}:{secs_f:05.2f} -> {mins_t}:{secs_t:05.2f}'
-                print(f'  {ts}   {text}')
-                lines.append((ts, text))
-            print()
-            print('Done.')
-            if output_path:
-                with open(output_path, 'w') as f:
-                    f.write(f'# Transcript: {source_name}\n\n')
-                    for ts, text in lines:
-                        f.write(f'  {ts}   {text}\n')
-                print(f'Saved to {output_path}')
-        elif evt == 'error':
-            msg = json.loads(payload).get('error', payload)
-            print(f'\nERROR: {msg}', file=sys.stderr)
-            sys.exit(1)
-" "$OUTPUT"
+| awk -v out="$OUTPUT" -v src="$(basename "$FILE")" '
+/^event: / { evt = substr($0, 8) }
+/^$/        { evt = "" }
+/^data: / && evt != "" {
+  data = substr($0, 7)
+  if (evt == "uploading") {
+    print "[uploading to Gemini...]"; fflush()
+  } else if (evt == "transcribing") {
+    print "[transcribing...]"; fflush()
+  } else if (evt == "done") {
+    gsub(/^\[|\]$/, "", data)
+    n = split(data, objs, /},{/)
+    print ""
+    print "=== TRANSCRIPT (" n " segments) ==="
+    if (out != "") { print "# Transcript: " src > out; print "" > out }
+    for (i = 1; i <= n; i++) {
+      obj = objs[i]
+      from = 0; to = 0; content = ""
+      if (match(obj, /"from":[0-9.]+/))    from    = substr(obj, RSTART+7,  RLENGTH-7)  + 0
+      if (match(obj, /"to":[0-9.]+/))      to      = substr(obj, RSTART+5,  RLENGTH-5)  + 0
+      if (match(obj, /"content":"[^"]*"/)) content = substr(obj, RSTART+11, RLENGTH-12)
+      mf = int(from/60); mt = int(to/60)
+      line = sprintf("  %d:%05.2f -> %d:%05.2f   %s", mf, from-mf*60, mt, to-mt*60, content)
+      print line
+      if (out != "") print line > out
+    }
+    print ""; print "Done."
+    if (out != "") print "\nSaved to " out
+  } else if (evt == "error") {
+    if (match(data, /"error":"[^"]*"/)) msg = substr(data, RSTART+9, RLENGTH-10)
+    else msg = data
+    print "ERROR: " msg > "/dev/stderr"
+    exit 1
+  }
+}
+'

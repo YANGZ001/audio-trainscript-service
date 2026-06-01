@@ -18,44 +18,43 @@ curl -s --no-buffer -N \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg url "$URL" '{type:"bilibili",url:$url}')" \
   "$HOST/api/transcribe" \
-| python3 -c "
-import sys, json
-
-evt = ''
-for line in sys.stdin:
-    line = line.rstrip()
-    if line.startswith('event:'):
-        evt = line.split(' ', 1)[1]
-        if evt == 'uploading':
-            print('\n[uploading to Gemini...]', flush=True)
-        elif evt == 'transcribing':
-            print('[transcribing...]', flush=True)
-        elif evt == 'error':
-            pass  # printed below with data
-    elif line.startswith('data:') and evt:
-        payload = line.split(' ', 1)[1]
-        if evt == 'downloading':
-            p = json.loads(payload)['progress']
-            bar = '#' * (p // 5) + '-' * (20 - p // 5)
-            print(f'\r[downloading] [{bar}] {p:3d}%', end='', flush=True)
-            if p == 100:
-                print()
-        elif evt == 'done':
-            segs = json.loads(payload)
-            print()
-            print(f'=== TRANSCRIPT ({len(segs)} segments) ===')
-            for s in segs:
-                from_s = s.get('from', 0)
-                to_s   = s.get('to', 0)
-                text   = s.get('content') or s.get('text') or repr(s)
-                mins_f, secs_f = int(from_s) // 60, from_s % 60
-                mins_t, secs_t = int(to_s)   // 60, to_s   % 60
-                ts = f'{mins_f}:{secs_f:05.2f} -> {mins_t}:{secs_t:05.2f}'
-                print(f'  {ts}   {text}')
-            print()
-            print('Done.')
-        elif evt == 'error':
-            msg = json.loads(payload).get('error', payload)
-            print(f'\nERROR: {msg}', file=sys.stderr)
-            sys.exit(1)
-"
+| awk '
+/^event: / { evt = substr($0, 8) }
+/^$/        { evt = "" }
+/^data: / && evt != "" {
+  data = substr($0, 7)
+  if (evt == "downloading") {
+    if (match(data, /"progress":[0-9]+/)) p = substr(data, RSTART+11, RLENGTH-11) + 0
+    filled = int(p/5); empty = 20 - filled
+    bar = ""
+    for (j = 1; j <= filled; j++) bar = bar "#"
+    for (j = 1; j <= empty;  j++) bar = bar "-"
+    printf "\r[downloading] [%s] %3d%%", bar, p; fflush()
+    if (p == 100) { print ""; fflush() }
+  } else if (evt == "uploading") {
+    print "\n[uploading to Gemini...]"; fflush()
+  } else if (evt == "transcribing") {
+    print "[transcribing...]"; fflush()
+  } else if (evt == "done") {
+    gsub(/^\[|\]$/, "", data)
+    n = split(data, objs, /},{/)
+    print ""
+    print "=== TRANSCRIPT (" n " segments) ==="
+    for (i = 1; i <= n; i++) {
+      obj = objs[i]
+      from = 0; to = 0; content = ""
+      if (match(obj, /"from":[0-9.]+/))    from    = substr(obj, RSTART+7,  RLENGTH-7)  + 0
+      if (match(obj, /"to":[0-9.]+/))      to      = substr(obj, RSTART+5,  RLENGTH-5)  + 0
+      if (match(obj, /"content":"[^"]*"/)) content = substr(obj, RSTART+11, RLENGTH-12)
+      mf = int(from/60); mt = int(to/60)
+      printf "  %d:%05.2f -> %d:%05.2f   %s\n", mf, from-mf*60, mt, to-mt*60, content
+    }
+    print ""; print "Done."
+  } else if (evt == "error") {
+    if (match(data, /"error":"[^"]*"/)) msg = substr(data, RSTART+9, RLENGTH-10)
+    else msg = data
+    print "ERROR: " msg > "/dev/stderr"
+    exit 1
+  }
+}
+'
