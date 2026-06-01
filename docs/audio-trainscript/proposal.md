@@ -10,7 +10,7 @@ This document partitions the project into an initial launch phase (Bilibili inte
 
 1. **Decoupled API-Only Service**: Build an independent audio transcription microservice (`audio-trainscript-service`) running in a separate Docker container.
 2. **Bilibili Audio Ingestion**: Resolve and download audio streams directly from Bilibili videos using the existing browser session token.
-3. **ASR using Gemini API**: Leverage Gemini 1.5 Flash (via the Free Tier API) to perform high-quality, speech-to-text transcribing with timestamps.
+3. **ASR using Gemini API**: Leverage Gemini 3.1 Flash Lite (via the Free Tier API) to perform high-quality, speech-to-text transcribing with timestamps.
 4. **Real-Time Progress Tracking**: Stream transcription status updates (Downloading $\rightarrow$ Uploading to Gemini $\rightarrow$ Transcribing $\rightarrow$ Done) to the caller using Server-Sent Events (SSE).
 
 ## Future Todo / Backlog (Out of Scope for Initial Version)
@@ -28,7 +28,7 @@ This document partitions the project into an initial launch phase (Bilibili inte
 ## Design Principles
 
 - **Simplicity & Speed**: Focus first on solving the Bilibili Copilot subtitle fallback.
-- **Resource Efficiency**: Use Gemini 1.5 Flash's cloud capacity to transcribe audio, avoiding local GPU dependencies.
+- **Resource Efficiency**: Use Gemini 3.1 Flash Lite's cloud capacity to transcribe audio, avoiding local GPU dependencies.
 - **Strict Cleanup**: Delete all downloaded audio files immediately after transcription finishes.
 
 ## Constraints

@@ -9,7 +9,7 @@
 ## Phase 2: Gemini Integration & Server-Sent Events (SSE)
 - [ ] Integrate `@google/generativeai` SDK.
 - [ ] Implement file upload to Gemini File API and ensure garbage collection (deleting both local temp file and Google cloud file after request completion).
-- [ ] Write system prompt instructing Gemini 1.5 Flash to return a structured JSON array of timestamps and content.
+- [ ] Write system prompt instructing Gemini 3.1 Flash Lite to return a structured JSON array of timestamps and content.
 - [ ] Implement Express/Fastify API server with `POST /api/transcribe` streaming progress using Server-Sent Events.
 
 ## Phase 3: Copilot Web Integration

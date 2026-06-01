@@ -19,7 +19,7 @@ Client (Copilot Web)                     Audio Trainscript Service         Bilib
         │                                         │←─ Return audio stream URL ─────────┤
         │                                         ├─ Download audio to temp disk       │
         │                                         ├─ Upload file to Gemini File API ──→│
-        │                                         ├─ Invoke Gemini 1.5 Flash ASR ─────→│
+        │                                         ├─ Invoke Gemini 3.1 Flash Lite ASR ──→│
         │                                         │←─ Return JSON timestamped text ────┤
         │                                         ├─ Delete temp audio file            │
         │←─ SSE Stream: Progress & JSON Result ───┤                                    │
@@ -49,7 +49,7 @@ Submit a Bilibili video URL for transcription. Returns a Server-Sent Events (SSE
 **SSE Event Types**
 - `downloading`: Sent while downloading audio from B站. Payload: `{"progress": number}`
 - `uploading`: Sent while uploading file to Gemini File API.
-- `transcribing`: Sent while Gemini 1.5 Flash is running the transcription.
+- `transcribing`: Sent while Gemini 3.1 Flash Lite is running the transcription.
 - `done`: Final success event. Payload: The JSON transcription array:
   ```json
   [
@@ -69,7 +69,7 @@ audio-trainscript-service/
   ├── src/
   │    ├── services/
   │    │    ├── bilibili.ts     # Bilibili playurl resolver & audio stream downloader
-  │    │    └── gemini.ts       # Gemini File API uploader & 1.5 Flash ASR runner
+  │    │    └── gemini.ts       # Gemini File API uploader & 3.1 Flash Lite ASR runner
   │    └── index.ts             # Express/Fastify server & SSE route handler
   ├── Dockerfile
   ├── docker-compose.yml
