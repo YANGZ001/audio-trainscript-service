@@ -57,12 +57,19 @@ export async function downloadBilibiliAudio(
   url: string,
   destPath: string,
   onProgress: (progress: number) => void,
+  tag?: string,
 ): Promise<void> {
+  const t = tag ?? 'bilibili';
   const sessdata = process.env.BILIBILI_SESSION_TOKEN;
   if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
   const bvid = extractBvid(url);
+  console.log(`[DEBUG] [${t}] bvid extracted`);
+  console.log(`[DEBUG] [${t}] fetching cid`);
   const cid = await getCid(bvid, sessdata);
+  console.log(`[DEBUG] [${t}] cid=${cid}`);
+  console.log(`[DEBUG] [${t}] fetching audio stream url`);
   const audioUrl = await getAudioStreamUrl(bvid, cid, sessdata);
+  console.log(`[DEBUG] [${t}] audio stream url obtained`);
 
   const response = await axios.get<NodeJS.ReadableStream>(audioUrl, {
     responseType: 'stream',
@@ -73,6 +80,7 @@ export async function downloadBilibiliAudio(
     maxRedirects: 5,
   });
 
+  console.log(`[INFO] [${t}] downloading audio`);
   const totalBytes = parseInt(String(response.headers['content-length'] ?? '0'), 10);
   let receivedBytes = 0;
   let sizeError: Error | undefined;
@@ -94,7 +102,10 @@ export async function downloadBilibiliAudio(
     });
 
     response.data.pipe(writer);
-    writer.on('finish', () => (sizeError ? reject(sizeError) : resolve()));
+    writer.on('finish', () => {
+      if (sizeError) { reject(sizeError); return; }
+      resolve();
+    });
     writer.on('error', (err) => reject(sizeError ?? err));
     response.data.on('error', (err) => reject(sizeError ?? err));
   });

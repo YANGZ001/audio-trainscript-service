@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
-import { downloadBilibiliAudio } from './services/bilibili';
+import { downloadBilibiliAudio, extractBvid } from './services/bilibili';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 
 const app = express();
@@ -68,10 +68,20 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     if (!res.writableFinished) clientGone = true;
   });
 
+  let bvid: string | undefined;
+  const t0 = Date.now();
+
   try {
+    bvid = extractBvid(url);
+    console.log(`[INFO] [${bvid}] transcribe request received`);
+
     await downloadBilibiliAudio(url, tempFile, (progress) => {
       if (!clientGone) sendEvent('downloading', { progress });
-    });
+    }, bvid);
+
+    const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
+    const downloadMb = (fs.statSync(tempFile).size / (1024 * 1024)).toFixed(1);
+    console.log(`[INFO] [${bvid}] download complete (${downloadMb} MB, ${downloadSec}s)`);
 
     if (clientGone) return;
     sendEvent('uploading', {});
@@ -79,12 +89,15 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     const model = typeof req.query.model === 'string' ? req.query.model : undefined;
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
-    }, model);
+    }, model, bvid);
+
+    const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[INFO] [${bvid}] transcription done (${transcript.length} segments, ${totalSec}s total)`);
 
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[transcribe] ${url} —`, err);
+    console.error(`[ERROR] [${bvid ?? 'transcribe'}] error —`, err);
     sendEvent('error', { error: message });
   } finally {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
@@ -110,6 +123,7 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
   }
 
   const tempFile = req.file.path;
+  const fileTag = req.file.originalname;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -125,17 +139,19 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     if (!res.writableFinished) clientGone = true;
   });
 
+  console.log(`[INFO] [${fileTag}] upload-transcribe request received`);
   const model = typeof req.query.model === 'string' ? req.query.model : undefined;
 
   try {
     if (!clientGone) sendEvent('uploading', {});
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
-    }, model);
+    }, model, fileTag);
+    console.log(`[INFO] [${fileTag}] transcription done (${transcript.length} segments)`);
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[upload-transcribe] —', err);
+    console.error(`[ERROR] [${fileTag}] error —`, err);
     sendEvent('error', { error: message });
   } finally {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);

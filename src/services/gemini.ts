@@ -16,23 +16,28 @@ const TRANSCRIPTION_PROMPT =
   'no explanation, and no trailing text. Each element must have exactly three fields: ' +
   '"from" (start time in seconds, number), "to" (end time in seconds, number), ' +
   '"content" (the spoken text for that segment, string). ' +
+  'Do NOT include any bounding boxes, box_2d fields, spatial coordinates, labels, or visual annotations. ' +
   'Example: [{"from":0,"to":4,"content":"Hello."},{"from":4,"to":8,"content":"Next sentence."}]';
 
 export async function transcribeAudio(
   filePath: string,
   onTranscribing: () => void,
   model?: string,
+  tag?: string,
 ): Promise<Segment[]> {
+  const t = tag ?? 'gemini';
   const ai = createClient();
   const modelToUse = model ?? GEMINI_MODEL;
   let uploadedName: string | undefined;
 
   try {
+    console.log(`[INFO] [${t}] uploading to Gemini`);
     const uploaded = await ai.files.upload({
       file: filePath,
       config: { mimeType: 'audio/mp4' },
     });
     uploadedName = uploaded.name;
+    console.log(`[DEBUG] [${t}] Gemini file uploaded, state=${uploaded.state}`);
 
     // Wait for Gemini to finish processing the uploaded file (max ~5 min)
     let fileInfo = uploaded;
@@ -42,6 +47,7 @@ export async function transcribeAudio(
       if (++pollAttempts > POLL_LIMIT) {
         throw new Error('Gemini file processing timed out');
       }
+      console.log(`[DEBUG] [${t}] waiting for Gemini processing (attempt ${pollAttempts})`);
       await new Promise((r) => setTimeout(r, 3000));
       fileInfo = await ai.files.get({ name: uploadedName! });
     }
@@ -52,6 +58,7 @@ export async function transcribeAudio(
       throw new Error('Gemini file URI missing after upload');
     }
 
+    console.log(`[INFO] [${t}] file ready, generating transcript (model=${modelToUse})`);
     onTranscribing();
 
     const result = await ai.models.generateContent({
@@ -68,7 +75,8 @@ export async function transcribeAudio(
     });
 
     const raw = (result.text ?? '').trim();
-    console.log('[gemini] raw response (first 500 chars):', raw.slice(0, 500));
+    console.log(`[INFO] [${t}] transcript received (${raw.length} chars)`);
+    console.log('[DEBUG] [gemini] raw response (first 500 chars):', raw.slice(0, 500));
     // Strip markdown code fences in case Gemini adds them despite the prompt
     const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
     // If direct parse fails, fall back to extracting the outermost [...] block
@@ -85,26 +93,32 @@ export async function transcribeAudio(
       /("from":\s*[\d.]+),\s*([\d.]+),\s*("content":)/g,
       '$1, "to": $2, $3',
     );
+    // Repair 4: strip Gemini visual bounding-box objects {"box_2d": [...], ...} that sometimes
+    // leak into audio transcription responses and produce malformed JSON
+    const cleaned = repaired
+      .replace(/,\s*\{[^{}]*"box_2d"[^{}]*\}/g, '')
+      .replace(/\{[^{}]*"box_2d"[^{}]*\}\s*,/g, '');
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(repaired);
+      parsed = JSON.parse(cleaned);
     } catch (e) {
       const pos = Number((e as SyntaxError).message.match(/position (\d+)/)?.[1] ?? 0);
-      console.log('[gemini] parse error at pos', pos, '— context:', JSON.stringify(repaired.slice(Math.max(0, pos - 80), pos + 80)));
-      const match = repaired.match(/\[[\s\S]*\]/);
+      console.log('[WARN] [gemini] parse error at pos', pos, '— context:', JSON.stringify(cleaned.slice(Math.max(0, pos - 80), pos + 80)));
+      const match = cleaned.match(/\[[\s\S]*\]/);
       if (!match) throw new Error('No JSON array found in Gemini response');
       parsed = JSON.parse(match[0]);
     }
     if (!Array.isArray(parsed)) throw new Error('Gemini returned a non-array response');
     const malformed = parsed.filter((s) => typeof s.from !== 'number' || typeof s.to !== 'number' || typeof s.content !== 'string');
     if (malformed.length > 0) {
-      console.log('[gemini] dropping malformed segments:', JSON.stringify(malformed.slice(0, 3)));
+      console.log('[WARN] [gemini] dropping malformed segments:', JSON.stringify(malformed.slice(0, 3)));
     }
     return parsed.filter((s) => typeof s.from === 'number' && typeof s.to === 'number' && typeof s.content === 'string') as Segment[];
   } finally {
     if (uploadedName) {
       await ai.files.delete({ name: uploadedName }).catch(() => {});
+      console.log(`[DEBUG] [${t}] Gemini file deleted`);
     }
   }
 }
