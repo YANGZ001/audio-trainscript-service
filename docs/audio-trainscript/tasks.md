@@ -16,12 +16,12 @@
 - [x] Implement error-path SSE events for Bilibili 403/404, Gemini quota errors, and size/duration limit violations.
 - [x] Repair Gemini response quirks: missing key quote, MM:SS timestamps past 60s, missing `"to"` key entirely.
 
-## Phase 3: Copilot Web Integration
-- [ ] Update `bilibili-copilot-web`'s `lib/bilibili.ts` to call the transcription service (via Tailscale MagicDNS hostname) when the subtitle lookup returns empty or fails with "字幕获取失败".
+## Phase 3: Copilot Web Integration ✅
+- [x] Update `bilibili-copilot-web`'s `lib/bilibili.ts` to call the transcription service (via Tailscale MagicDNS hostname) when the subtitle lookup returns empty or fails with "字幕获取失败".
   - Apply a 10-minute SSE stream timeout; surface an error to the user if exceeded.
   - If the transcription service is unreachable (network error / non-2xx on connect), fall back gracefully with the existing subtitle-not-available message rather than throwing.
-- [ ] Add loading indicators in the Copilot frontend to display the current transcription step (`downloading` / `uploading` / `transcribing`) to the user.
-- [ ] Verify end-to-end flow: Copilot Web → audio-trainscript-service (Tailscale) → Gemini → SSE result displayed in UI.
+- [x] Add loading indicators in the Copilot frontend to display the current transcription step (`downloading` / `uploading` / `transcribing`) to the user.
+- [x] Verify end-to-end flow: Copilot Web → audio-trainscript-service (Tailscale) → Gemini → SSE result displayed in UI.
 
 ---
 

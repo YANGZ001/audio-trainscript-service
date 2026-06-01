@@ -58,7 +58,8 @@ export async function downloadBilibiliAudio(
   destPath: string,
   onProgress: (progress: number) => void,
 ): Promise<void> {
-  const sessdata = process.env.BILIBILI_SESSION_TOKEN ?? '';
+  const sessdata = process.env.BILIBILI_SESSION_TOKEN;
+  if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
   const bvid = extractBvid(url);
   const cid = await getCid(bvid, sessdata);
   const audioUrl = await getAudioStreamUrl(bvid, cid, sessdata);
@@ -83,7 +84,7 @@ export async function downloadBilibiliAudio(
       receivedBytes += chunk.length;
       if (receivedBytes > MAX_FILE_SIZE) {
         sizeError = new Error('Audio file exceeds the 200MB size limit');
-        writer.destroy();
+        writer.destroy(sizeError);
         (response.data as NodeJS.ReadableStream & { destroy(): void }).destroy();
         return;
       }

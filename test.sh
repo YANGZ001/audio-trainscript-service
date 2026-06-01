@@ -16,7 +16,7 @@ echo ""
 
 curl -s --no-buffer -N \
   -H "Content-Type: application/json" \
-  -d "{\"type\":\"bilibili\",\"url\":\"$URL\"}" \
+  -d "$(jq -n --arg url "$URL" '{type:"bilibili",url:$url}')" \
   "$HOST/api/transcribe" \
 | python3 -c "
 import sys, json

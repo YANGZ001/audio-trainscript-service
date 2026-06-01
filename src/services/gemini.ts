@@ -32,14 +32,22 @@ export async function transcribeAudio(
     });
     uploadedName = uploaded.name;
 
-    // Wait for Gemini to finish processing the uploaded file
+    // Wait for Gemini to finish processing the uploaded file (max ~5 min)
     let fileInfo = uploaded;
+    let pollAttempts = 0;
+    const POLL_LIMIT = 100;
     while (fileInfo.state === 'PROCESSING') {
+      if (++pollAttempts > POLL_LIMIT) {
+        throw new Error('Gemini file processing timed out');
+      }
       await new Promise((r) => setTimeout(r, 3000));
       fileInfo = await ai.files.get({ name: uploadedName! });
     }
     if (fileInfo.state === 'FAILED') {
       throw new Error('Gemini file processing failed');
+    }
+    if (!fileInfo.uri) {
+      throw new Error('Gemini file URI missing after upload');
     }
 
     onTranscribing();
@@ -87,12 +95,11 @@ export async function transcribeAudio(
       parsed = JSON.parse(match[0]);
     }
     if (!Array.isArray(parsed)) throw new Error('Gemini returned a non-array response');
-    // Log any segment that doesn't match the expected shape so we can catch new Gemini quirks
     const malformed = parsed.filter((s) => typeof s.from !== 'number' || typeof s.to !== 'number' || typeof s.content !== 'string');
     if (malformed.length > 0) {
-      console.log('[gemini] malformed segments:', JSON.stringify(malformed.slice(0, 3)));
+      console.log('[gemini] dropping malformed segments:', JSON.stringify(malformed.slice(0, 3)));
     }
-    return parsed as Segment[];
+    return parsed.filter((s) => typeof s.from === 'number' && typeof s.to === 'number' && typeof s.content === 'string') as Segment[];
   } finally {
     if (uploadedName) {
       await ai.files.delete({ name: uploadedName }).catch(() => {});
@@ -109,8 +116,9 @@ export async function cleanupOrphanedGeminiFiles(): Promise<void> {
   try {
     const pager = await ai.files.list();
     for await (const file of pager) {
-      const created = new Date((file.createTime as string) ?? 0).getTime();
-      if (created < cutoff && file.name) {
+      if (!file.createTime || !file.name) continue;
+      const created = new Date(file.createTime as string).getTime();
+      if (created < cutoff) {
         await ai.files.delete({ name: file.name }).catch(() => {});
       }
     }

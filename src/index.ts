@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -35,7 +36,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  const tempFile = path.join(os.tmpdir(), `bilibili-${Date.now()}.m4a`);
+  const tempFile = path.join(os.tmpdir(), `bilibili-${crypto.randomUUID()}.m4a`);
 
   // res 'close' fires when the socket drops mid-stream (real client disconnect).
   // req 'close' fires as soon as the request body is consumed — too early for our purposes.

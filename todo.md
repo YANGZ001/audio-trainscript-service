@@ -1,10 +1,10 @@
 # Todo
 
-## Phase 3 (next up)
+## Phase 3 ✅ (complete)
 
-- [ ] Wire `bilibili-copilot-web` subtitle fallback → `POST /api/transcribe` (Tailscale hostname, 10-min timeout, graceful unreachable handling)
-- [ ] Add `downloading` / `uploading` / `transcribing` loading indicators to the React frontend
-- [ ] End-to-end verification: Copilot Web → Tailscale → Gemini → result displayed in UI
+- [x] Wire `bilibili-copilot-web` subtitle fallback → ASR via `callTranscribeService()` (Tailscale hostname, 10-min timeout, graceful unreachable handling)
+- [x] Add `downloading` / `uploading` / `transcribing` loading indicators to the React frontend
+- [x] End-to-end verification: Copilot Web → Tailscale → Gemini → result displayed in UI
 
 ## Backlog
 
