@@ -41,8 +41,9 @@ curl -s --no-buffer -N \
   } else if (evt == "transcribing") {
     print "[transcribing...]"; fflush()
   } else if (evt == "done") {
-    if (match(data, /"text":"[\s\S]*/)) text = substr(data, RSTART+8, length(data)-RSTART-8)
-    else text = data
+    text = data
+    sub(/^\{"text":"/, "", text)
+    sub(/"[}]$/, "", text)
     print ""
     print "=== TRANSCRIPT ==="
     print text

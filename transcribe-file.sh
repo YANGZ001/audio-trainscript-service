@@ -34,21 +34,15 @@ curl -s --no-buffer -N \
   } else if (evt == "transcribing") {
     print "[transcribing...]"; fflush()
   } else if (evt == "done") {
-    gsub(/^\[|\]$/, "", data)
-    n = split(data, objs, /},{/)
+    text = data
+    sub(/^\{"text":"/, "", text)
+    sub(/"[}]$/, "", text)
     print ""
-    print "=== TRANSCRIPT (" n " segments) ==="
-    if (out != "") { print "# Transcript: " src > out; print "" > out }
-    for (i = 1; i <= n; i++) {
-      obj = objs[i]
-      from = 0; to = 0; content = ""
-      if (match(obj, /"from":[0-9.]+/))    from    = substr(obj, RSTART+7,  RLENGTH-7)  + 0
-      if (match(obj, /"to":[0-9.]+/))      to      = substr(obj, RSTART+5,  RLENGTH-5)  + 0
-      if (match(obj, /"content":"[^"]*"/)) content = substr(obj, RSTART+11, RLENGTH-12)
-      mf = int(from/60); mt = int(to/60)
-      line = sprintf("  %d:%05.2f -> %d:%05.2f   %s", mf, from-mf*60, mt, to-mt*60, content)
-      print line
-      if (out != "") print line > out
+    print "=== TRANSCRIPT ==="
+    print text
+    if (out != "") {
+      print "# Transcript: " src > out
+      print text > out
     }
     print ""; print "Done."
     if (out != "") print "\nSaved to " out

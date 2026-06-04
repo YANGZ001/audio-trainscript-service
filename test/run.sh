@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PASS=0; FAIL=0; SKIP=0
+PASS=0; FAIL=0
 
 run_test() {
   local name="$1"; local script="$2"; shift 2
