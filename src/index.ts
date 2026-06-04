@@ -36,6 +36,22 @@ function runMiddleware(req: Request, res: Response, fn: Function): Promise<void>
 
 const PORT = Number(process.env.PORT ?? 3000);
 
+const BILIBILI_AUDIO_CACHE_DIR = '/data/bilibili-audio';
+const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+function audioCachePath(bvid: string): string {
+  return path.join(BILIBILI_AUDIO_CACHE_DIR, `${bvid}.m4a`);
+}
+
+function isCacheHit(cachePath: string): boolean {
+  try {
+    const { mtimeMs } = fs.statSync(cachePath);
+    return Date.now() - mtimeMs < CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 cleanupOrphanedGeminiFiles().catch((err) =>
   logger.error({ err }, 'Startup Gemini cleanup failed'),
 );
@@ -61,8 +77,6 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  const tempFile = path.join(os.tmpdir(), `bilibili-${crypto.randomUUID()}.m4a`);
-
   // res 'close' fires when the socket drops mid-stream (real client disconnect).
   // req 'close' fires as soon as the request body is consumed — too early for our purposes.
   let clientGone = false;
@@ -78,19 +92,26 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     const log = logger.child({ bvid });
     log.info('transcribe request received');
 
-    await downloadBilibiliAudio(url, tempFile, (progress) => {
-      if (!clientGone) sendEvent('downloading', { progress });
-    }, bvid);
+    const audioPath = audioCachePath(bvid);
 
-    const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
-    const downloadMb = (fs.statSync(tempFile).size / (1024 * 1024)).toFixed(1);
-    log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+    if (isCacheHit(audioPath)) {
+      const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+      log.info({ mb: cacheMb }, 'audio cache hit');
+    } else {
+      fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
+      await downloadBilibiliAudio(url, audioPath, (progress) => {
+        if (!clientGone) sendEvent('downloading', { progress });
+      }, bvid);
+      const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
+      const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+      log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+    }
 
     if (clientGone) return;
     sendEvent('uploading', {});
 
     const model = typeof req.query.model === 'string' ? req.query.model : undefined;
-    const transcript = await transcribeAudio(tempFile, () => {
+    const transcript = await transcribeAudio(audioPath, () => {
       if (!clientGone) sendEvent('transcribing', {});
     }, model, bvid);
 
@@ -103,7 +124,6 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     logger.child({ bvid: bvid ?? 'transcribe' }).error({ err }, 'request error');
     sendEvent('error', { error: message });
   } finally {
-    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
     res.end();
   }
 });
