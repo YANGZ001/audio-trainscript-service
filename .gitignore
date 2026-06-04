@@ -4,3 +4,5 @@ dist/
 *.env.local
 
 agent-guidelines/
+gemini-raw.txt
+unit_test/upload-transcribe/input/sample.m4a

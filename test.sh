@@ -41,19 +41,11 @@ curl -s --no-buffer -N \
   } else if (evt == "transcribing") {
     print "[transcribing...]"; fflush()
   } else if (evt == "done") {
-    gsub(/^\[|\]$/, "", data)
-    n = split(data, objs, /},{/)
+    if (match(data, /"text":"[\s\S]*/)) text = substr(data, RSTART+8, length(data)-RSTART-8)
+    else text = data
     print ""
-    print "=== TRANSCRIPT (" n " segments) ==="
-    for (i = 1; i <= n; i++) {
-      obj = objs[i]
-      from = 0; to = 0; content = ""
-      if (match(obj, /"from":[0-9.]+/))    from    = substr(obj, RSTART+7,  RLENGTH-7)  + 0
-      if (match(obj, /"to":[0-9.]+/))      to      = substr(obj, RSTART+5,  RLENGTH-5)  + 0
-      if (match(obj, /"content":"[^"]*"/)) content = substr(obj, RSTART+11, RLENGTH-12)
-      mf = int(from/60); mt = int(to/60)
-      printf "  %d:%05.2f -> %d:%05.2f   %s\n", mf, from-mf*60, mt, to-mt*60, content
-    }
+    print "=== TRANSCRIPT ==="
+    print text
     print ""; print "Done."
   } else if (evt == "error") {
     if (match(data, /"error":"[^"]*"/)) msg = substr(data, RSTART+9, RLENGTH-10)
