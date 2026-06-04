@@ -17,7 +17,7 @@ echo ""
 
 if [[ ! -f "$FILE" ]]; then
   echo "SKIP — no input file found"
-  echo "  Add a .m4a file at: unit_test/upload-transcribe/input/sample.m4a"
+  echo "  Add a .m4a file at: test/upload-transcribe/input/sample.m4a"
   exit 0
 fi
 

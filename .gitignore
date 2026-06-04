@@ -5,4 +5,4 @@ dist/
 
 agent-guidelines/
 gemini-raw.txt
-unit_test/upload-transcribe/input/sample.m4a
+test/upload-transcribe/input/sample.m4a
