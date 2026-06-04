@@ -40,7 +40,7 @@ flowchart LR
         Router -->|1. Trigger| BiliSrv
         Router -->|2. Transcribe| GeminiSrv
         BiliSrv -->|Save .m4a| TempDisk
-        GeminiSrv -->|Read &amp; Clean| TempDisk
+        GeminiSrv -->|Read & Clean| TempDisk
     end
 
     subgraph External ["External Services"]
@@ -54,10 +54,11 @@ flowchart LR
     CLI -->|POST /api/upload-transcribe| Router
     cURL -->|POST /api/transcribe| Router
     Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| Web
+    Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| CLI
 
     %% External API Connections
     BiliSrv <-->|Fetch playurl & stream| BiliAPI
-    GeminiSrv <-->|Upload &amp; ASR| GeminiAPI
+    GeminiSrv <-->|Upload & ASR| GeminiAPI
 
     %% Node Styles
     classDef client stroke:#3b82f6,stroke-width:1.5px;
@@ -90,7 +91,7 @@ flowchart LR
 * **Bilibili Service (`src/services/bilibili.ts`)**:
   * Extracts the Bilibili Video ID (`BVID`).
   * Interacts with Bilibili APIs to resolve metadata (`cid`) and stream playurls.
-  * Downloads the DASH audio stream stream-by-stream using Axios.
+  * Downloads the DASH audio stream chunk-by-chunk using Axios.
 * **Gemini Service (`src/services/gemini.ts`)**:
   * Authenticates using `GEMINI_API_KEY` and initializes the `@google/genai` client.
   * Uploads audio files to the Google AI Studio Files API.
