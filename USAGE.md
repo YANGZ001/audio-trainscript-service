@@ -99,19 +99,16 @@ The stream emits the following events in order:
 | `downloading` | `{"progress": 0–100}` | Audio download progress (%) |
 | `uploading` | `{}` | Audio file is being uploaded to Gemini |
 | `transcribing` | `{}` | Gemini is processing the audio |
-| `done` | Array of segment objects | Final transcript |
+| `done` | `{ text: string }` | Final transcript (Gemini's raw output) |
 | `error` | `{"error": "<message>"}` | Any failure at any stage |
 
-**`done` payload — segment object:**
+**`done` payload:**
 
 ```json
-[
-  { "from": 0.0, "to": 4.5, "content": "Hello, welcome to this video." },
-  { "from": 4.5, "to": 9.1, "content": "Today we'll cover..." }
-]
+{ "text": "[{\"from\":0,\"to\":4.5,\"content\":\"Hello, welcome to this video.\"}, ...]" }
 ```
 
-Fields: `from` / `to` are timestamps in seconds (float); `content` is the transcribed text.
+The `text` field contains Gemini's raw response string — typically JSON-shaped with timestamp segments, but returned verbatim without parsing or repair.
 
 ---
 
@@ -216,7 +213,7 @@ Accepts a local audio file and streams back the transcript as SSE.
 |---|---|---|
 | `uploading` | `{}` | File is being uploaded to Gemini |
 | `transcribing` | `{}` | Gemini is processing the audio |
-| `done` | Array of segment objects | Final transcript |
+| `done` | `{ text: string }` | Final transcript (Gemini's raw output) |
 | `error` | `{"error": "<message>"}` | Any failure |
 
 Pre-stream errors (wrong file type, file too large, missing field) are returned as plain JSON with HTTP 400 / 413 — not as SSE events.
