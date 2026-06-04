@@ -7,4 +7,9 @@ services:
       - BILIBILI_SESSION_TOKEN=${BILIBILI_SESSION_TOKEN}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - PORT=${PORT:-3001}
+    volumes:
+      - bilibili-audio-cache:/data/bilibili-audio
     restart: unless-stopped
+
+volumes:
+  bilibili-audio-cache:
