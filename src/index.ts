@@ -99,6 +99,8 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     if (isCacheHit(audioPath)) {
       const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
       log.info({ mb: cacheMb }, 'audio cache hit');
+      const now = new Date();
+      fs.utimesSync(audioPath, now, now);
     } else {
       fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
       await downloadBilibiliAudio(canonicalUrl, audioPath, (progress) => {
