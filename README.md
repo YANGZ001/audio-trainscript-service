@@ -1,6 +1,6 @@
 # Audio Trainscript Service
 
-A headless microservice that downloads audio from Bilibili videos and transcribes them using the Gemini API, streamed back as Server-Sent Events (SSE).
+A microservice that downloads audio from Bilibili videos and transcribes them using the Gemini API, streamed back as Server-Sent Events (SSE). Includes a built-in browser UI for cross-platform access without scripting.
 
 ---
 
@@ -9,18 +9,14 @@ A headless microservice that downloads audio from Bilibili videos and transcribe
 The following diagram maps the components, network boundaries, and execution paths of the service.
 
 ### Architecture Diagram
-![System Diagram](./system_diagram.svg)
-
----
-
-### Interactive Flowchart
-GitHub renders this Mermaid flowchart natively. You can copy/edit the raw diagram code below:
+GitHub renders this Mermaid flowchart natively:
 
 ```mermaid
 flowchart LR
     subgraph Clients ["Clients / Consuming Apps"]
         direction TB
         Web["React Web UI<br/>(bilibili-copilot-web)"]
+        BrowserUI["Built-in Browser UI<br/>(public/index.html, served at GET /)"]
         CLI["CLI / Shell Scripts<br/>(test.sh / transcribe-file.sh)"]
         cURL["REST API Clients<br/>(cURL / HTTP Clients)"]
     end
@@ -51,10 +47,13 @@ flowchart LR
 
     %% Client Interactions
     Web -->|POST /api/transcribe| Router
+    BrowserUI -->|"POST /api/transcribe<br/>POST /api/upload-transcribe"| Router
     CLI -->|POST /api/upload-transcribe| Router
     cURL -->|POST /api/transcribe| Router
     Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| Web
+    Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| BrowserUI
     Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| CLI
+    Router -.->|"Serves index.html<br/>(GET /)"| BrowserUI
 
     %% External API Connections
     BiliSrv <-->|Fetch playurl & stream| BiliAPI
@@ -67,7 +66,7 @@ flowchart LR
     classDef router stroke:#6366f1,stroke-width:1.5px;
     classDef storage stroke:#9ca3af,stroke-width:1.5px;
 
-    class Web,CLI,cURL client;
+    class Web,BrowserUI,CLI,cURL client;
     class BiliSrv,BiliAPI b站;
     class GeminiSrv,GeminiAPI gemini;
     class Router router;
@@ -79,7 +78,8 @@ flowchart LR
 ## Component Overviews
 
 ### 1. Clients & Integration Layer
-* **React Web UI (`bilibili-copilot-web`)**: The user interface that calls the service over a Tailscale connection and displays progress state (downloading, uploading, transcribing) in real-time.
+* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili URL input and `.m4a` file upload (drag-and-drop), displays real-time SSE progress, and outputs the transcript as timestamped plain text with a one-click copy action. No installation required — open `http://<host>:3001` in any browser.
+* **React Web UI (`bilibili-copilot-web`)**: The downstream application that calls the service over a Tailscale connection and integrates transcription as a subtitle fallback.
 * **CLI Scripts**: Helper scripts included in the repository (`test.sh` for Bilibili URLs and `transcribe-file.sh` for local files) that make raw curl requests and format the Server-Sent Events output.
 * **cURL/REST API**: Direct HTTP API access for testing and integrations.
 
