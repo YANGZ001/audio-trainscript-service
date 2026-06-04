@@ -9,12 +9,7 @@ A microservice that downloads audio from Bilibili videos and transcribes them us
 The following diagram maps the components, network boundaries, and execution paths of the service.
 
 ### Architecture Diagram
-![System Diagram](./system_diagram.svg)
-
----
-
-### Interactive Flowchart
-GitHub renders this Mermaid flowchart natively. You can copy/edit the raw diagram code below:
+GitHub renders this Mermaid flowchart natively:
 
 ```mermaid
 flowchart LR
