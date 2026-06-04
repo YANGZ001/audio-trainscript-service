@@ -9,6 +9,7 @@ import { downloadBilibiliAudio, extractBvid } from './services/bilibili';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 
 const app = express();
+app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.json());
 
 const UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
