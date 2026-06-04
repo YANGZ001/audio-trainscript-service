@@ -1,21 +1,20 @@
-# Audio Trainscript Service — System Architecture & Diagram
+# Audio Trainscript Service
 
-This document describes the architecture, component relationships, and data flows of the **Audio Trainscript Service**.
+A headless microservice that downloads audio from Bilibili videos and transcribes them using the Gemini API, streamed back as Server-Sent Events (SSE).
 
-## System Diagram
+---
 
-The system diagram is generated as a vector SVG and can be viewed directly:
-👉 **[View Vector SVG Diagram (system_diagram.svg)](./system_diagram.svg)**
+## System Architecture
 
-*Below is the diagram rendering (if supported by your markdown viewer):*
+The following diagram maps the components, network boundaries, and execution paths of the service.
 
+### Architecture Diagram
 ![System Diagram](./system_diagram.svg)
 
 ---
 
-## Native Mermaid Diagram
-
-For an interactive or editable flowchart, you can view the Mermaid diagram below (GitHub renders this natively):
+### Interactive Flowchart
+GitHub renders this Mermaid flowchart natively. You can copy/edit the raw diagram code below:
 
 ```mermaid
 flowchart TB
@@ -65,7 +64,7 @@ flowchart TB
 
 ---
 
-## Component Descriptions
+## Component Overviews
 
 ### 1. Clients & Integration Layer
 * **React Web UI (`bilibili-copilot-web`)**: The user interface that calls the service over a Tailscale connection and displays progress state (downloading, uploading, transcribing) in real-time.
@@ -98,18 +97,6 @@ flowchart TB
 
 ---
 
-## Key Data Flows
+## Detailed Usage Instructions
 
-### A. Bilibili Audio Transcription Flow (`/api/transcribe`)
-1. **Client** initiates a `POST` request with a Bilibili URL.
-2. **Express Server** opens an SSE connection (`text/event-stream`).
-3. **Bilibili Service** resolves the video info, requests the audio playurl, and downloads the stream into a local temp file, emitting `downloading` events.
-4. **Gemini Service** uploads the temp file to the Google Files API (sending `uploading` events) and waits for it to process.
-5. **Gemini Service** triggers the LLM for transcription, emitting `transcribing` events.
-6. **Gemini Service** receives raw JSON transcript, parses/repairs it, and streams the array back as a `done` event.
-7. The local temp file is deleted from the server disk and the file is deleted from Gemini Files storage.
-
-### B. Local File Upload Transcription Flow (`/api/upload-transcribe`)
-1. **Client** uploads a local `.m4a` file using `multipart/form-data`.
-2. **Express Server** saves the file to `/tmp` via Multer, and opens an SSE stream.
-3. Steps 4-7 from the Bilibili flow are executed to upload to Gemini, transcribe, return results, and clean up.
+For local installation, Docker deployment, API formats, and testing scripts, please refer to the **[USAGE.md](./USAGE.md)** guide.
