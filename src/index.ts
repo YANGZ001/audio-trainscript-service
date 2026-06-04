@@ -94,7 +94,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     }, model, bvid);
 
     const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-    log.info({ segments: transcript.length, sec: totalSec }, 'transcription done');
+    log.info({ segments: transcript.length, sec: totalSec, model: model ?? 'gemini-3.1-flash-lite' }, 'transcription done');
 
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
@@ -150,7 +150,7 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
     }, model, fileTag);
-    log.info({ segments: transcript.length }, 'transcription done');
+    log.info({ segments: transcript.length, model: model ?? 'gemini-3.1-flash-lite' }, 'transcription done');
     if (!clientGone) sendEvent('done', transcript);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
