@@ -1,0 +1,4 @@
+{
+  "_description": "done SSE event payload — Gemini raw transcript, verbatim",
+  "text": "<non-empty string — Gemini's raw response, typically JSON-shaped with timestamps>"
+}

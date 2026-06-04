@@ -572,12 +572,6 @@
       }
     }
 
-    function formatTime(sec) {
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60);
-      return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-    }
-
     function handleEvent(name, data) {
       let payload;
       try { payload = JSON.parse(data); } catch { payload = data; }
@@ -592,11 +586,10 @@
       } else if (name === 'transcribing') {
         setStatus('transcribing…');
       } else if (name === 'done') {
-        const segments = Array.isArray(payload) ? payload : [];
-        const text = segments.map(s => '[' + formatTime(s.from) + '] ' + s.content).join('\n');
+        const text = typeof payload?.text === 'string' ? payload.text : '';
         document.getElementById('transcript').value = text;
         document.getElementById('copy-btn').disabled = false;
-        document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars · ' + segments.length + ' segments';
+        document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars';
         setStatus('done', 'success');
       } else if (name === 'error') {
         setStatus(payload?.error || 'unknown error', 'error');
