@@ -17,18 +17,6 @@ The following diagram maps the components, network boundaries, and execution pat
 GitHub renders this Mermaid flowchart natively. You can copy/edit the raw diagram code below:
 
 ```mermaid
-%%{init: {
-  'theme': 'dark',
-  'themeVariables': {
-    'primaryColor': '#1f2937',
-    'primaryTextColor': '#f9fafb',
-    'primaryBorderColor': '#374151',
-    'lineColor': '#94a3b8',
-    'secondaryColor': '#111827',
-    'tertiaryColor': '#111827',
-    'edgeLabelBackground': '#0b0f19'
-  }
-}}%%
 flowchart LR
     subgraph Clients ["Clients / Consuming Apps"]
         direction TB
@@ -72,11 +60,11 @@ flowchart LR
     GeminiSrv <-->|Upload &amp; ASR| GeminiAPI
 
     %% Node Styles
-    classDef client fill:#1f2937,stroke:#3b82f6,stroke-width:1.5px,color:#f9fafb;
-    classDef b站 fill:#1f2937,stroke:#db2777,stroke-width:1.5px,color:#f9fafb;
-    classDef gemini fill:#1f2937,stroke:#4285f4,stroke-width:1.5px,color:#f9fafb;
-    classDef router fill:#1f2937,stroke:#6366f1,stroke-width:1.5px,color:#f9fafb;
-    classDef storage fill:#1f2937,stroke:#9ca3af,stroke-width:1.5px,color:#f9fafb;
+    classDef client stroke:#3b82f6,stroke-width:1.5px;
+    classDef b站 stroke:#db2777,stroke-width:1.5px;
+    classDef gemini stroke:#4285f4,stroke-width:1.5px;
+    classDef router stroke:#6366f1,stroke-width:1.5px;
+    classDef storage stroke:#9ca3af,stroke-width:1.5px;
 
     class Web,CLI,cURL client;
     class BiliSrv,BiliAPI b站;
