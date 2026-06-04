@@ -22,7 +22,7 @@
 
 - [x] Build with `docker compose up --build`
 - [x] Run a Bilibili transcription request; confirm `done` event carries `{ text: "..." }` with Gemini's raw output
-- [ ] Run an upload-transcribe request; confirm same shape
+- [x] Run an upload-transcribe request; confirm same shape
 - [x] Confirm no `[ERROR]` JSON parse errors in logs
 - [x] Confirm status events (`downloading`, `uploading`, `transcribing`) still fire correctly
 
