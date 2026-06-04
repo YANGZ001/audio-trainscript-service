@@ -1,6 +1,6 @@
 # Audio Trainscript Service — Usage Guide
 
-A headless microservice that downloads audio from Bilibili videos and transcribes them using the Gemini API, streamed back as Server-Sent Events (SSE).
+A microservice that downloads audio from Bilibili videos and transcribes them using the Gemini API, streamed back as Server-Sent Events (SSE). Includes a built-in browser UI for cross-platform access without scripting.
 
 ---
 
@@ -50,6 +50,25 @@ docker compose up -d --build
 curl http://localhost:3001/health
 # {"status":"ok"}
 ```
+
+---
+
+## Web UI
+
+The service includes a built-in browser interface — no additional installation needed.
+
+Open **`http://<host>:3001`** in any browser (Chrome, Edge, Firefox).
+
+| Feature | Details |
+|---|---|
+| **Bilibili URL** | Paste a `bilibili.com/video/BV...` URL and click Transcribe |
+| **File Upload** | Drag-and-drop or browse for a `.m4a` file (max 100 MB) |
+| **Progress** | Real-time status: download %, uploading, transcribing |
+| **Output** | Timestamped plain text (`[MM:SS] content` per segment) |
+| **Copy** | One-click copy to clipboard |
+| **Model** | Dropdown to select the Gemini model (defaults to `gemini-3.1-flash-lite`) |
+
+> The web UI is the recommended access method for Windows users, where the shell scripts cannot be reused directly.
 
 ---
 
