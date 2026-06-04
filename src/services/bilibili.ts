@@ -10,6 +10,23 @@ const BILIBILI_HEADERS = {
   Referer: 'https://www.bilibili.com',
 };
 
+export async function resolveShortUrl(url: string): Promise<string> {
+  if (!url.includes('b23.tv')) return url;
+  try {
+    const res = await axios.get(url, {
+      maxRedirects: 0,
+      validateStatus: (s) => s >= 300 && s < 400,
+      headers: BILIBILI_HEADERS,
+      timeout: 5_000,
+    });
+    const location = res.headers['location'];
+    if (typeof location === 'string' && location) return location;
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 export function extractBvid(url: string): string {
   const match = url.match(/\/video\/(BV[a-zA-Z0-9]+)/i);
   if (!match) throw new Error(`Cannot extract BVID from URL: ${url}`);

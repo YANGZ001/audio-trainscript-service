@@ -5,7 +5,7 @@ import logger from './logger';
 import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
-import { downloadBilibiliAudio, extractBvid } from './services/bilibili';
+import { downloadBilibiliAudio, extractBvid, resolveShortUrl } from './services/bilibili';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 
 const app = express();
@@ -68,6 +68,8 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     return;
   }
 
+  const canonicalUrl = await resolveShortUrl(url);
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -88,7 +90,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
   const t0 = Date.now();
 
   try {
-    bvid = extractBvid(url);
+    bvid = extractBvid(canonicalUrl);
     const log = logger.child({ bvid });
     log.info('transcribe request received');
 
@@ -99,7 +101,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       log.info({ mb: cacheMb }, 'audio cache hit');
     } else {
       fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
-      await downloadBilibiliAudio(url, audioPath, (progress) => {
+      await downloadBilibiliAudio(canonicalUrl, audioPath, (progress) => {
         if (!clientGone) sendEvent('downloading', { progress });
       }, bvid);
       const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
