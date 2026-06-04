@@ -20,6 +20,7 @@ run_test() {
 # Intercept SKIP exit (upload test exits 0 with "SKIP" message when no file)
 run_test "bilibili"          "$SCRIPT_DIR/bilibili/run.sh"
 run_test "upload-transcribe" "$SCRIPT_DIR/upload-transcribe/run.sh"
+run_test "format-json-output" "$SCRIPT_DIR/format-json-output/run.sh"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Results: ${PASS} passed  ${FAIL} failed"
