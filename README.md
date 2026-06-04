@@ -43,7 +43,7 @@ flowchart TB
     Web -->|POST /api/transcribe| Router
     CLI -->|POST /api/upload-transcribe| Router
     cURL -->|POST /api/transcribe| Router
-    Router -.->|SSE Events Stream<br/>(downloading, uploading, transcribing, done)| Web
+    Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| Web
     Router -.->|SSE Events Stream| CLI
     Router -.->|SSE Events Stream| cURL
 
