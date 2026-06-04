@@ -5,14 +5,15 @@ HOST="${TRANSCRIBE_HOST:-http://localhost:3001}"
 MODEL="${MODEL:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FILE="${1:-$SCRIPT_DIR/input/sample.m4a}"
+OUTPUT="${2:-}"
 
 ENDPOINT="$HOST/api/upload-transcribe"
 [[ -n "$MODEL" ]] && ENDPOINT="${ENDPOINT}?model=${MODEL}"
 
-echo "=== upload-transcribe: done-shape test ==="
-echo "Host : $HOST"
-echo "File : $FILE"
-[[ -n "$MODEL" ]] && echo "Model: $MODEL"
+echo "Host   : $HOST"
+echo "File   : $FILE"
+[[ -n "$OUTPUT" ]] && echo "Output : $OUTPUT"
+echo "Model  : ${MODEL:-gemini-3.1-flash-lite}"
 echo ""
 
 if [[ ! -f "$FILE" ]]; then
@@ -21,13 +22,44 @@ if [[ ! -f "$FILE" ]]; then
   exit 0
 fi
 
-RESULT=$(curl -s --no-buffer -N \
-  -F "file=@$FILE;type=audio/mp4" \
-  "$ENDPOINT")
+TMPFILE=$(mktemp)
+trap 'rm -f "$TMPFILE"' EXIT
 
-echo "$RESULT" | awk '
-/^event: / { printf "[%s]\n", substr($0,8) }
-' 2>/dev/null || true
+curl -s --no-buffer -N \
+  -F "file=@${FILE};type=audio/mp4" \
+  "$ENDPOINT" \
+| tee "$TMPFILE" \
+| awk -v out="$OUTPUT" -v src="$(basename "$FILE")" '
+/^event: / { evt = substr($0, 8) }
+/^$/        { evt = "" }
+/^data: / && evt != "" {
+  data = substr($0, 7)
+  if (evt == "uploading") {
+    print "[uploading to Gemini...]"; fflush()
+  } else if (evt == "transcribing") {
+    print "[transcribing...]"; fflush()
+  } else if (evt == "done") {
+    text = data
+    sub(/^\{"text":"/, "", text)
+    sub(/"[}]$/, "", text)
+    print ""
+    print "=== TRANSCRIPT ==="
+    print text
+    if (out != "") {
+      print "# Transcript: " src > out
+      print text > out
+    }
+    print ""; print "Done."
+    if (out != "") print "\nSaved to " out
+  } else if (evt == "error") {
+    if (match(data, /"error":"[^"]*"/)) msg = substr(data, RSTART+9, RLENGTH-10)
+    else msg = data
+    print "ERROR: " msg > "/dev/stderr"; fflush("/dev/stderr")
+  }
+}
+' || true
+
+RESULT=$(cat "$TMPFILE")
 
 if ! echo "$RESULT" | grep -q "^event: done"; then
   echo "FAIL — no done event received"
