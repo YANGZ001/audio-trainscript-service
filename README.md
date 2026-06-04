@@ -17,9 +17,21 @@ The following diagram maps the components, network boundaries, and execution pat
 GitHub renders this Mermaid flowchart natively. You can copy/edit the raw diagram code below:
 
 ```mermaid
-flowchart TB
-    subgraph Clients ["Clients / Consuming Applications"]
-        direction LR
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#1f2937',
+    'primaryTextColor': '#f9fafb',
+    'primaryBorderColor': '#374151',
+    'lineColor': '#94a3b8',
+    'secondaryColor': '#111827',
+    'tertiaryColor': '#111827',
+    'edgeLabelBackground': '#0b0f19'
+  }
+}}%%
+flowchart LR
+    subgraph Clients ["Clients / Consuming Apps"]
+        direction TB
         Web["React Web UI<br/>(bilibili-copilot-web)"]
         CLI["CLI / Shell Scripts<br/>(test.sh / transcribe-file.sh)"]
         cURL["REST API Clients<br/>(cURL / HTTP Clients)"]
@@ -28,9 +40,19 @@ flowchart TB
     subgraph Service ["Audio Trainscript Service (Docker Container)"]
         direction TB
         Router["Express API Server / Router<br/>(src/index.ts)"]
-        BiliSrv["Bilibili Service<br/>(src/services/bilibili.ts)"]
-        GeminiSrv["Gemini Service<br/>(src/services/gemini.ts)"]
+        
+        subgraph Internal ["Service Components"]
+            direction LR
+            BiliSrv["Bilibili Service<br/>(src/services/bilibili.ts)"]
+            GeminiSrv["Gemini Service<br/>(src/services/gemini.ts)"]
+        end
+        
         TempDisk[("Local Temp Storage<br/>(/tmp/*.m4a)")]
+        
+        Router -->|1. Trigger| BiliSrv
+        Router -->|2. Transcribe| GeminiSrv
+        BiliSrv -->|Save .m4a| TempDisk
+        GeminiSrv -->|Read &amp; Clean| TempDisk
     end
 
     subgraph External ["External Services"]
@@ -44,22 +66,23 @@ flowchart TB
     CLI -->|POST /api/upload-transcribe| Router
     cURL -->|POST /api/transcribe| Router
     Router -.->|"SSE Events Stream<br/>(downloading, uploading, transcribing, done)"| Web
-    Router -.->|SSE Events Stream| CLI
-    Router -.->|SSE Events Stream| cURL
 
-    %% Router to Services
-    Router -->|1. Trigger Download| BiliSrv
-    Router -->|2. Transcribe| GeminiSrv
+    %% External API Connections
+    BiliSrv <-->|Fetch playurl & stream| BiliAPI
+    GeminiSrv <-->|Upload &amp; ASR| GeminiAPI
 
-    %% Bilibili Flow
-    BiliSrv <-->|Fetch view & playurl| BiliAPI
-    BiliAPI -->|Audio Stream| BiliSrv
-    BiliSrv -->|Write temp .m4a| TempDisk
+    %% Node Styles
+    classDef client fill:#1f2937,stroke:#3b82f6,stroke-width:1.5px,color:#f9fafb;
+    classDef b站 fill:#1f2937,stroke:#db2777,stroke-width:1.5px,color:#f9fafb;
+    classDef gemini fill:#1f2937,stroke:#4285f4,stroke-width:1.5px,color:#f9fafb;
+    classDef router fill:#1f2937,stroke:#6366f1,stroke-width:1.5px,color:#f9fafb;
+    classDef storage fill:#1f2937,stroke:#9ca3af,stroke-width:1.5px,color:#f9fafb;
 
-    %% Gemini Flow
-    GeminiSrv -->|Read & Clean .m4a| TempDisk
-    GeminiSrv -->|Upload & run ASR| GeminiAPI
-    GeminiAPI -->|JSON Transcript| GeminiSrv
+    class Web,CLI,cURL client;
+    class BiliSrv,BiliAPI b站;
+    class GeminiSrv,GeminiAPI gemini;
+    class Router router;
+    class TempDisk storage;
 ```
 
 ---
