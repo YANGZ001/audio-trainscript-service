@@ -8,7 +8,7 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 const SNIPD_GRAPHQL_URL = 'https://api.snipd.com/v1/public/graphql';
 
 export function extractSnipdEpisodeId(url: string): string {
-  const match = url.match(/episode\/([0-9a-f-]{36})/i);
+  const match = url.match(/episode\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
   if (!match) throw new Error(`Cannot extract Snipd episode ID from URL: ${url}`);
   return match[1];
 }
@@ -107,10 +107,20 @@ export async function downloadSnipdAudio(
 
     response.data.pipe(writer);
     writer.on('finish', () => {
-      if (sizeError) { reject(sizeError); return; }
+      if (sizeError) {
+        try { fs.unlinkSync(destPath); } catch {}
+        reject(sizeError);
+        return;
+      }
       resolve();
     });
-    writer.on('error', (err) => reject(sizeError ?? err));
-    response.data.on('error', (err) => reject(sizeError ?? err));
+    writer.on('error', (err) => {
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(sizeError ?? err);
+    });
+    response.data.on('error', (err) => {
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(sizeError ?? err);
+    });
   });
 }
