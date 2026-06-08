@@ -418,7 +418,8 @@
         <textarea class="transcript-area" id="transcript" readonly placeholder="transcript will appear here…"></textarea>
         <div class="output-actions">
           <span class="char-count" id="char-count"></span>
-          <button class="btn btn-ghost" id="format-btn" disabled onclick="formatTranscript()">Format</button>
+          <!-- Format button disabled: output is now plain text, not JSON -->
+          <button class="btn btn-ghost" id="format-btn" disabled>Format</button>
           <button class="btn btn-ghost" id="copy-btn" disabled onclick="copyTranscript()">Copy All</button>
         </div>
       </div>
@@ -590,7 +591,7 @@
       } else if (name === 'done') {
         const text = typeof payload?.text === 'string' ? payload.text : '';
         document.getElementById('transcript').value = text;
-        document.getElementById('format-btn').disabled = false;
+        // document.getElementById('format-btn').disabled = false;
         document.getElementById('copy-btn').disabled = false;
         document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars';
         setStatus('done', 'success');
@@ -599,6 +600,7 @@
       }
     }
 
+    /* formatTranscript disabled: output is plain text, not JSON
     function formatTranscript() {
       const ta = document.getElementById('transcript');
       try {
@@ -610,6 +612,7 @@
         setStatus('format error: ' + err.message, 'error');
       }
     }
+    */
 
     async function copyTranscript() {
       const text = document.getElementById('transcript').value;

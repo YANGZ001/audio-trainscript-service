@@ -10,6 +10,16 @@ const BILIBILI_HEADERS = {
   Referer: 'https://www.bilibili.com',
 };
 
+export interface VideoMetadata {
+  cid: number;
+  ownerName: string;
+  title: string;
+  desc: string;
+  tname: string;
+  duration: number;
+  dynamic: string;
+}
+
 export async function resolveShortUrl(url: string): Promise<string> {
   if (!url.includes('b23.tv')) return url;
   try {
@@ -33,19 +43,29 @@ export function extractBvid(url: string): string {
   return match[1];
 }
 
-async function getCid(bvid: string, sessdata: string): Promise<number> {
-  const res = await axios.get<{ code: number; message: string; data: { cid: number } }>(
-    'https://api.bilibili.com/x/web-interface/view',
-    {
-      params: { bvid },
-      headers: { ...BILIBILI_HEADERS, Cookie: `SESSDATA=${sessdata}` },
-      timeout: 15_000,
-    },
-  );
+export async function getVideoMetadata(bvid: string, sessdata: string): Promise<VideoMetadata> {
+  const res = await axios.get<{
+    code: number;
+    message: string;
+    data: {
+      cid: number;
+      title: string;
+      desc: string;
+      tname: string;
+      duration: number;
+      dynamic: string;
+      owner: { name: string };
+    };
+  }>('https://api.bilibili.com/x/web-interface/view', {
+    params: { bvid },
+    headers: { ...BILIBILI_HEADERS, Cookie: `SESSDATA=${sessdata}` },
+    timeout: 15_000,
+  });
   if (res.data.code !== 0) {
     throw new Error(`Bilibili view API error (${res.data.code}): ${res.data.message}`);
   }
-  return res.data.data.cid;
+  const { cid, title, desc, tname, duration, dynamic, owner } = res.data.data;
+  return { cid, ownerName: owner.name, title, desc, tname, duration, dynamic };
 }
 
 async function getAudioStreamUrl(bvid: string, cid: number, sessdata: string): Promise<string> {
@@ -72,19 +92,14 @@ async function getAudioStreamUrl(bvid: string, cid: number, sessdata: string): P
 }
 
 export async function downloadBilibiliAudio(
-  url: string,
+  bvid: string,
+  cid: number,
   destPath: string,
   onProgress: (progress: number) => void,
-  tag?: string,
 ): Promise<void> {
-  const log = logger.child({ bvid: tag ?? 'bilibili' });
+  const log = logger.child({ bvid });
   const sessdata = process.env.BILIBILI_SESSION_TOKEN;
   if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
-  const bvid = extractBvid(url);
-  log.debug('bvid extracted');
-  log.debug('fetching cid');
-  const cid = await getCid(bvid, sessdata);
-  log.debug({ cid }, 'cid fetched');
   log.debug('fetching audio stream url');
   const audioUrl = await getAudioStreamUrl(bvid, cid, sessdata);
   log.debug('audio stream url obtained');

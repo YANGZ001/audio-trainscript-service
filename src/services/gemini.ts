@@ -10,19 +10,46 @@ function createClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-const TRANSCRIPTION_PROMPT =
-  'Transcribe this audio file. Return ONLY a raw JSON array with no markdown fences, ' +
-  'no explanation, and no trailing text. Each element must have exactly three fields: ' +
-  '"from" (start time in seconds, number), "to" (end time in seconds, number), ' +
-  '"content" (the spoken text for that segment, string). ' +
-  'Do NOT include any bounding boxes, box_2d fields, spatial coordinates, labels, or visual annotations. ' +
-  'Example: [{"from":0,"to":4,"content":"Hello."},{"from":4,"to":8,"content":"Next sentence."}]';
+export interface TranscriptMeta {
+  ownerName?: string;
+  title?: string;
+  desc?: string;
+  tname?: string;
+  duration?: number;
+  dynamic?: string;
+}
+
+function buildPrompt(meta?: TranscriptMeta): string {
+  const lines: string[] = [];
+  if (meta?.title) lines.push(`- Title: ${meta.title}`);
+  if (meta?.ownerName) lines.push(`- Channel: ${meta.ownerName}`);
+  if (meta?.tname) lines.push(`- Category: ${meta.tname}`);
+  if (meta?.duration != null) lines.push(`- Duration: ${meta.duration}s`);
+  if (meta?.desc) lines.push(`- Description: ${meta.desc.slice(0, 200)}`);
+  if (meta?.dynamic) lines.push(`- Post: ${meta.dynamic.slice(0, 200)}`);
+
+  const contextBlock = lines.length > 0 ? `Video context:\n${lines.join('\n')}\n\n` : '';
+  const primarySpeaker = meta?.ownerName ?? 'Speaker A';
+
+  return (
+    contextBlock +
+    `# Audio Transcriptionist\n` +
+    `You are a professional audio transcriptionist. The user will provide an audio input, and you will output the corresponding verbatim transcript. Requirements:\n` +
+    `1. Produce a strict word-for-word transcript — omit nothing and do not summarize.\n` +
+    `2. Include filler words (um, uh, 嗯, 啊, 那个, etc.) exactly as spoken — do not clean them up.\n` +
+    `3. Mark unintelligible audio as [inaudible]. Mark low-confidence words as [unclear: word?].\n` +
+    `4. The primary speaker is ${primarySpeaker}. Label each speaker by name or role if identifiable; otherwise use Speaker A, Speaker B.\n` +
+    `5. If the recording contains technical terminology, proofread it against context for correctness.\n` +
+    `6. Prepend a timestamp to each speaker turn in [MM:SS] format.`
+  );
+}
 
 export async function transcribeAudio(
   filePath: string,
   onTranscribing: () => void,
   model?: string,
   tag?: string,
+  meta?: TranscriptMeta,
 ): Promise<string> {
   const log = logger.child({ tag: tag ?? 'gemini' });
   const ai = createClient();
@@ -67,7 +94,7 @@ export async function transcribeAudio(
           role: 'user',
           parts: [
             { fileData: { mimeType: 'audio/mp4', fileUri: fileInfo.uri } },
-            { text: TRANSCRIPTION_PROMPT },
+            { text: buildPrompt(meta) },
           ],
         },
       ],

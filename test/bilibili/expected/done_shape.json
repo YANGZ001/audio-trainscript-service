@@ -1,4 +1,4 @@
 {
-  "_description": "done SSE event payload — Gemini raw transcript, verbatim",
-  "text": "<non-empty string — Gemini's raw response, typically JSON-shaped with timestamps>"
+  "_description": "done SSE event payload — plain-text transcript with [MM:SS] SpeakerName: content format",
+  "text": "<non-empty string — Gemini's verbatim transcript, filler words preserved>"
 }
