@@ -25,8 +25,8 @@ function buildPrompt(meta?: TranscriptMeta): string {
   if (meta?.ownerName) lines.push(`- Channel: ${meta.ownerName}`);
   if (meta?.tname) lines.push(`- Category: ${meta.tname}`);
   if (meta?.duration != null) lines.push(`- Duration: ${meta.duration}s`);
-  if (meta?.desc) lines.push(`- Description: ${meta.desc}`);
-  if (meta?.dynamic) lines.push(`- Post: ${meta.dynamic}`);
+  if (meta?.desc) lines.push(`- Description: ${meta.desc.slice(0, 200)}`);
+  if (meta?.dynamic) lines.push(`- Post: ${meta.dynamic.slice(0, 200)}`);
 
   const contextBlock = lines.length > 0 ? `Video context:\n${lines.join('\n')}\n\n` : '';
   const primarySpeaker = meta?.ownerName ?? 'Speaker A';
