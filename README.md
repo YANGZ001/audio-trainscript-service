@@ -31,12 +31,15 @@ flowchart LR
             GeminiSrv["Gemini Service<br/>(src/services/gemini.ts)"]
         end
         
-        TempDisk[("Local Temp Storage<br/>(/tmp/*.m4a)")]
+        AudioCache[("Bilibili Audio Cache<br/>(/data/bilibili-audio/*.m4a)<br/>90-day sliding TTL")]
+        TempDisk[("Upload Temp<br/>(/tmp/*.m4a)")]
         
-        Router -->|1. Trigger| BiliSrv
+        Router -->|1. Resolve URL & Trigger| BiliSrv
         Router -->|2. Transcribe| GeminiSrv
-        BiliSrv -->|Save .m4a| TempDisk
-        GeminiSrv -->|Read & Clean| TempDisk
+        BiliSrv -->|"Cache miss: save .m4a"| AudioCache
+        BiliSrv -->|"Cache hit: refresh mtime"| AudioCache
+        GeminiSrv -->|Read cached audio| AudioCache
+        GeminiSrv -->|Read & delete upload| TempDisk
     end
 
     subgraph External ["External Services"]
@@ -70,7 +73,7 @@ flowchart LR
     class BiliSrv,BiliAPI b站;
     class GeminiSrv,GeminiAPI gemini;
     class Router router;
-    class TempDisk storage;
+    class AudioCache,TempDisk storage;
 ```
 
 ---
@@ -89,6 +92,7 @@ flowchart LR
   * Streams real-time progress events back to clients as **Server-Sent Events (SSE)**.
   * Detects client disconnections to terminate long-running processes early.
 * **Bilibili Service (`src/services/bilibili.ts`)**:
+  * Resolves `b23.tv` short URLs to canonical `bilibili.com` URLs before any processing.
   * Extracts the Bilibili Video ID (`BVID`).
   * Interacts with Bilibili APIs to resolve metadata (`cid`) and stream playurls.
   * Downloads the DASH audio stream chunk-by-chunk using Axios.
@@ -97,11 +101,13 @@ flowchart LR
   * Uploads audio files to the Google AI Studio Files API.
   * Polls the file processing status until it is ready (`PROCESSING` -> `ACTIVE`).
   * Invokes the Gemini API `generateContent` using a targeted prompt instructing it to output structured JSON with timestamp ranges (`from`/`to`) and transcription segment text.
-  * Robustly parses and repairs Gemini JSON outputs (handling markdown fences, missing key quotes, and bounding box formats).
+  * Returns the raw Gemini response string verbatim — no client-side parsing or repair.
   * Automatically cleans up the uploaded file from Google AI Studio on completion.
   * Scans and cleans up orphaned Gemini files older than 1 hour on startup.
-* **Local Temp Storage**:
-  * Temporary directory (`/tmp`) on the local filesystem used to stage download streams from Bilibili or uploaded multipart files from clients, which are cleaned up immediately after upload/error.
+* **Bilibili Audio Cache** (`/data/bilibili-audio/`):
+  * Persistent volume that caches downloaded Bilibili audio files keyed by `BVID`, with a 90-day sliding TTL. A cache hit refreshes the file's mtime and skips the download entirely.
+* **Upload Temp** (`/tmp/`):
+  * Temporary directory used exclusively to stage `.m4a` files uploaded by clients via `/api/upload-transcribe`. Cleaned up immediately after transcription or on error.
 
 ### 3. External API Dependencies
 * **Bilibili APIs**: Used to resolve stream URLs and download audio. Requires `BILIBILI_SESSION_TOKEN` (the `SESSDATA` cookie) for authenticated request access.
