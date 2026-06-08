@@ -6,6 +6,7 @@ services:
     environment:
       - BILIBILI_SESSION_TOKEN=${BILIBILI_SESSION_TOKEN}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SNIPD_API_KEY=${SNIPD_API_KEY}
       - PORT=${PORT:-3001}
     volumes:
       - bilibili-audio-cache:/data/bilibili-audio

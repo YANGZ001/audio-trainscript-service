@@ -5,8 +5,6 @@ import { TranscriptMeta } from './gemini';
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
-// Public Firebase API key embedded in Snipd's web app — not user-specific
-const SNIPD_API_KEY = 'AIzaSyDqEfh597HW-7dl2j_YxECwSjbNZ9bs93U';
 const SNIPD_GRAPHQL_URL = 'https://api.snipd.com/v1/public/graphql';
 
 export function extractSnipdEpisodeId(url: string): string {
@@ -18,6 +16,9 @@ export function extractSnipdEpisodeId(url: string): string {
 export async function fetchSnipdEpisodeData(
   episodeId: string,
 ): Promise<{ audioUrl: string; meta: TranscriptMeta }> {
+  const apiKey = process.env.SNIPD_API_KEY;
+  if (!apiKey) throw new Error('SNIPD_API_KEY is not set');
+
   const res = await axios.post<{
     data?: {
       episodes_by_pk?: {
@@ -46,7 +47,7 @@ export async function fetchSnipdEpisodeData(
     {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': SNIPD_API_KEY,
+        'x-api-key': apiKey,
         origin: 'https://share.snipd.com',
       },
       timeout: 15_000,
