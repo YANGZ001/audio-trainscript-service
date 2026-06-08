@@ -61,7 +61,7 @@ Open **`http://<host>:3001`** in any browser (Chrome, Edge, Firefox).
 
 | Feature | Details |
 |---|---|
-| **Bilibili URL** | Paste a `bilibili.com/video/BV...` URL and click Transcribe |
+| **Bilibili URL** | Paste a `bilibili.com/video/BV...` or `b23.tv/...` short URL and click Transcribe |
 | **File Upload** | Drag-and-drop or browse for a `.m4a` file (max 100 MB) |
 | **Progress** | Real-time status: download %, uploading, transcribing |
 | **Output** | Timestamped plain text (`[MM:SS] content` per segment) |
@@ -90,13 +90,15 @@ Content-Type: application/json
 }
 ```
 
+`b23.tv` short URLs are also accepted and are resolved to their canonical `bilibili.com` URL before processing.
+
 **Response:** `text/event-stream` (SSE)
 
 The stream emits the following events in order:
 
 | Event | Data | Description |
 |---|---|---|
-| `downloading` | `{"progress": 0–100}` | Audio download progress (%) |
+| `downloading` | `{"progress": 0–100}` | Audio download progress (%) — skipped on cache hit |
 | `uploading` | `{}` | Audio file is being uploaded to Gemini |
 | `transcribing` | `{}` | Gemini is processing the audio |
 | `done` | `{ text: string }` | Final transcript (Gemini's raw output) |
@@ -243,10 +245,17 @@ An invalid model name is rejected by the Gemini API and surfaces as an `error` S
 
 | Error message | Likely cause |
 |---|---|
-| `Failed to resolve Bilibili stream URL` | `BILIBILI_SESSION_TOKEN` is expired or wrong |
-| `Download failed` | Network issue or video is region-locked |
-| `Gemini upload failed` | Invalid or quota-exhausted `GEMINI_API_KEY` |
-| `Request body must include type: "bilibili" and a url string` | Malformed request body |
+| `BILIBILI_SESSION_TOKEN is not set` | `BILIBILI_SESSION_TOKEN` env var missing from `.env` |
+| `Bilibili view API error (...)` | Session token expired, wrong, or video is unavailable |
+| `Bilibili playurl API error (...)` | Session token lacks access to the requested video |
+| `No audio streams in Bilibili playurl response` | Video has no downloadable audio stream (e.g. region-locked) |
+| `Audio file exceeds the 200MB size limit` | Bilibili audio stream is larger than the 200 MB guard |
+| `Gemini file processing timed out` | Gemini took >5 min to process the uploaded file |
+| `Gemini file processing failed` | Gemini rejected the audio file |
+| `GEMINI_API_KEY environment variable is not set` | `GEMINI_API_KEY` env var missing from `.env` |
+| `Request body must include type: "bilibili" and a url string` | Malformed JSON body on `POST /api/transcribe` |
+| `Only .m4a files accepted (...)` | Upload endpoint received a non-`.m4a` file |
+| `File exceeds 100 MB limit.` | Uploaded file is larger than the 100 MB multer limit |
 
 ---
 
