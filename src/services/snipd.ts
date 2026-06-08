@@ -16,8 +16,8 @@ export function extractSnipdEpisodeId(url: string): string {
 export async function fetchSnipdEpisodeData(
   episodeId: string,
 ): Promise<{ audioUrl: string; meta: TranscriptMeta }> {
-  const apiKey = process.env.SNIPD_API_KEY;
-  if (!apiKey) throw new Error('SNIPD_API_KEY is not set');
+  const snipdApiKey = process.env.SNIPD_API_KEY;
+  if (!snipdApiKey) throw new Error('SNIPD_API_KEY is not set');
 
   const res = await axios.post<{
     data?: {
@@ -47,7 +47,7 @@ export async function fetchSnipdEpisodeData(
     {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': snipdApiKey,
         origin: 'https://share.snipd.com',
       },
       timeout: 15_000,
