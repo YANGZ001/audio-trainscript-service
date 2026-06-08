@@ -5,7 +5,7 @@ import logger from './logger';
 import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
-import { downloadBilibiliAudio, extractBvid, resolveShortUrl } from './services/bilibili';
+import { downloadBilibiliAudio, extractBvid, getVideoMetadata, resolveShortUrl } from './services/bilibili';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 
 const app = express();
@@ -94,6 +94,13 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     const log = logger.child({ bvid });
     log.info('transcribe request received');
 
+    const sessdata = process.env.BILIBILI_SESSION_TOKEN;
+    if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
+
+    log.debug('fetching video metadata');
+    const { cid, ownerName, title, desc, tname, duration, dynamic } = await getVideoMetadata(bvid, sessdata);
+    log.debug({ cid }, 'metadata fetched');
+
     const audioPath = audioCachePath(bvid);
 
     if (isCacheHit(audioPath)) {
@@ -103,9 +110,9 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       fs.utimesSync(audioPath, now, now);
     } else {
       fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
-      await downloadBilibiliAudio(canonicalUrl, audioPath, (progress) => {
+      await downloadBilibiliAudio(bvid, cid, audioPath, (progress) => {
         if (!clientGone) sendEvent('downloading', { progress });
-      }, bvid);
+      });
       const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
       const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
       log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
@@ -117,7 +124,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     const model = typeof req.query.model === 'string' ? req.query.model : undefined;
     const transcript = await transcribeAudio(audioPath, () => {
       if (!clientGone) sendEvent('transcribing', {});
-    }, model, bvid);
+    }, model, bvid, { ownerName, title, desc, tname, duration, dynamic });
 
     const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
     log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-3.1-flash-lite' }, 'transcription done');

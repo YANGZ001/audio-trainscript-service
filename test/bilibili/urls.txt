@@ -1,0 +1,7 @@
+# Bilibili test URLs
+# Usage: bash test/bilibili/run.sh <url>
+#
+# Format: <url>  # <description>
+
+https://www.bilibili.com/video/BV1te5R6zE5f/  # default — short clip used in original tests
+https://www.bilibili.com/video/BV1Xu411f7TR/  # interview video — used to verify plain-text transcript + speaker label + filler words
