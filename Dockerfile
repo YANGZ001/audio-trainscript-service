@@ -14,7 +14,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY public/ ./public/
-RUN mkdir -p /data/bilibili-audio && chown app:app /data/bilibili-audio
+RUN mkdir -p /data/bilibili-audio /data/snipd-audio && chown app:app /data/bilibili-audio /data/snipd-audio
 EXPOSE 3001
 USER app
 CMD ["node", "dist/index.js"]

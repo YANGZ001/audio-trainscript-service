@@ -375,8 +375,8 @@
 
       <div class="panel-body">
         <div id="panel-url">
-          <label for="url-input">Video URL</label>
-          <input type="url" id="url-input" placeholder="https://www.bilibili.com/video/BV..." />
+          <label for="url-input">Video / Podcast URL</label>
+          <input type="url" id="url-input" placeholder="Bilibili or Snipd episode URL" />
         </div>
 
         <div id="panel-file" class="hidden">
@@ -518,14 +518,14 @@
         if (activeTab === 'url') {
           const url = document.getElementById('url-input').value.trim();
           if (!url) {
-            setStatus('please enter a bilibili url', 'error');
+            setStatus('please enter a url', 'error');
             setRunning(false);
             return;
           }
           response = await fetch('/api/transcribe?model=' + encodeURIComponent(model), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'bilibili', url }),
+            body: JSON.stringify({ url }),
             signal: abortController.signal,
           });
         } else {

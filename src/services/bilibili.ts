@@ -136,10 +136,20 @@ export async function downloadBilibiliAudio(
 
     response.data.pipe(writer);
     writer.on('finish', () => {
-      if (sizeError) { reject(sizeError); return; }
+      if (sizeError) {
+        try { fs.unlinkSync(destPath); } catch {}
+        reject(sizeError);
+        return;
+      }
       resolve();
     });
-    writer.on('error', (err) => reject(sizeError ?? err));
-    response.data.on('error', (err) => reject(sizeError ?? err));
+    writer.on('error', (err) => {
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(sizeError ?? err);
+    });
+    response.data.on('error', (err) => {
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(sizeError ?? err);
+    });
   });
 }

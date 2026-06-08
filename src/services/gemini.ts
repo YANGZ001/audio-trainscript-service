@@ -56,11 +56,13 @@ export async function transcribeAudio(
   const modelToUse = model ?? GEMINI_MODEL;
   let uploadedName: string | undefined;
 
+  const mimeType = filePath.endsWith('.mp3') ? 'audio/mpeg' : 'audio/mp4';
+
   try {
     log.info('uploading to Gemini');
     const uploaded = await ai.files.upload({
       file: filePath,
-      config: { mimeType: 'audio/mp4' },
+      config: { mimeType },
     });
     uploadedName = uploaded.name;
     log.debug({ state: uploaded.state }, 'Gemini file uploaded');
@@ -93,7 +95,7 @@ export async function transcribeAudio(
         {
           role: 'user',
           parts: [
-            { fileData: { mimeType: 'audio/mp4', fileUri: fileInfo.uri } },
+            { fileData: { mimeType, fileUri: fileInfo.uri } },
             { text: buildPrompt(meta) },
           ],
         },
