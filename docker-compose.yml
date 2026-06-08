@@ -9,7 +9,9 @@ services:
       - PORT=${PORT:-3001}
     volumes:
       - bilibili-audio-cache:/data/bilibili-audio
+      - snipd-audio-cache:/data/snipd-audio
     restart: unless-stopped
 
 volumes:
   bilibili-audio-cache:
+  snipd-audio-cache:

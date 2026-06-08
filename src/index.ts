@@ -6,6 +6,7 @@ import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
 import { downloadBilibiliAudio, extractBvid, getVideoMetadata, resolveShortUrl } from './services/bilibili';
+import { downloadSnipdAudio, extractSnipdEpisodeId, fetchSnipdEpisodeData } from './services/snipd';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 
 const app = express();
@@ -37,10 +38,13 @@ function runMiddleware(req: Request, res: Response, fn: Function): Promise<void>
 const PORT = Number(process.env.PORT ?? 3000);
 
 const BILIBILI_AUDIO_CACHE_DIR = '/data/bilibili-audio';
+const SNIPD_AUDIO_CACHE_DIR = '/data/snipd-audio';
 const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
-function audioCachePath(bvid: string): string {
-  return path.join(BILIBILI_AUDIO_CACHE_DIR, `${bvid}.m4a`);
+function detectSource(url: string): 'bilibili' | 'snipd' {
+  if (/bilibili\.com|b23\.tv/i.test(url)) return 'bilibili';
+  if (/share\.snipd\.com\/episode\//i.test(url)) return 'snipd';
+  throw new Error('Unsupported URL — must be a Bilibili or Snipd episode URL');
 }
 
 function isCacheHit(cachePath: string): boolean {
@@ -61,14 +65,20 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.post('/api/transcribe', async (req: Request, res: Response) => {
-  const { type, url } = req.body as { type?: string; url?: string };
+  const { url } = req.body as { url?: string };
 
-  if (type !== 'bilibili' || typeof url !== 'string' || !url) {
-    res.status(400).json({ error: 'Request body must include type: "bilibili" and a url string' });
+  if (typeof url !== 'string' || !url) {
+    res.status(400).json({ error: 'Request body must include a url string' });
     return;
   }
 
-  const canonicalUrl = await resolveShortUrl(url);
+  let source: 'bilibili' | 'snipd';
+  try {
+    source = detectSource(url);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Unsupported URL' });
+    return;
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -86,53 +96,96 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     if (!res.writableFinished) clientGone = true;
   });
 
-  let bvid: string | undefined;
+  let requestTag = 'transcribe';
   const t0 = Date.now();
+  const model = typeof req.query.model === 'string' ? req.query.model : undefined;
 
   try {
-    bvid = extractBvid(canonicalUrl);
-    const log = logger.child({ bvid });
-    log.info('transcribe request received');
+    if (source === 'bilibili') {
+      const canonicalUrl = await resolveShortUrl(url);
+      const bvid = extractBvid(canonicalUrl);
+      requestTag = bvid;
+      const log = logger.child({ bvid });
+      log.info('transcribe request received');
 
-    const sessdata = process.env.BILIBILI_SESSION_TOKEN;
-    if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
+      const sessdata = process.env.BILIBILI_SESSION_TOKEN;
+      if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
 
-    log.debug('fetching video metadata');
-    const { cid, ownerName, title, desc, tname, duration, dynamic } = await getVideoMetadata(bvid, sessdata);
-    log.debug({ cid }, 'metadata fetched');
+      log.debug('fetching video metadata');
+      const { cid, ownerName, title, desc, tname, duration, dynamic } = await getVideoMetadata(bvid, sessdata);
+      log.debug({ cid }, 'metadata fetched');
 
-    const audioPath = audioCachePath(bvid);
+      const audioPath = path.join(BILIBILI_AUDIO_CACHE_DIR, `${bvid}.m4a`);
 
-    if (isCacheHit(audioPath)) {
-      const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-      log.info({ mb: cacheMb }, 'audio cache hit');
-      const now = new Date();
-      fs.utimesSync(audioPath, now, now);
+      if (isCacheHit(audioPath)) {
+        const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+        log.info({ mb: cacheMb }, 'audio cache hit');
+        const now = new Date();
+        fs.utimesSync(audioPath, now, now);
+      } else {
+        fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
+        await downloadBilibiliAudio(bvid, cid, audioPath, (progress) => {
+          if (!clientGone) sendEvent('downloading', { progress });
+        });
+        const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
+        const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+        log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+      }
+
+      if (clientGone) return;
+      sendEvent('uploading', {});
+
+      const transcript = await transcribeAudio(audioPath, () => {
+        if (!clientGone) sendEvent('transcribing', {});
+      }, model, bvid, { ownerName, title, desc, tname, duration, dynamic });
+
+      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
+
+      if (!clientGone) sendEvent('done', { text: transcript });
+
     } else {
-      fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
-      await downloadBilibiliAudio(bvid, cid, audioPath, (progress) => {
-        if (!clientGone) sendEvent('downloading', { progress });
-      });
-      const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
-      const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-      log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+      const episodeId = extractSnipdEpisodeId(url);
+      requestTag = episodeId;
+      const log = logger.child({ episodeId });
+      log.info('transcribe request received');
+
+      log.debug('fetching Snipd episode data');
+      const { audioUrl, meta } = await fetchSnipdEpisodeData(episodeId);
+      log.debug('episode data fetched');
+
+      const audioPath = path.join(SNIPD_AUDIO_CACHE_DIR, `${episodeId}.mp3`);
+
+      if (isCacheHit(audioPath)) {
+        const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+        log.info({ mb: cacheMb }, 'audio cache hit');
+        const now = new Date();
+        fs.utimesSync(audioPath, now, now);
+      } else {
+        fs.mkdirSync(SNIPD_AUDIO_CACHE_DIR, { recursive: true });
+        await downloadSnipdAudio(audioUrl, audioPath, (progress) => {
+          if (!clientGone) sendEvent('downloading', { progress });
+        });
+        const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
+        const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
+        log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+      }
+
+      if (clientGone) return;
+      sendEvent('uploading', {});
+
+      const transcript = await transcribeAudio(audioPath, () => {
+        if (!clientGone) sendEvent('transcribing', {});
+      }, model, episodeId, meta);
+
+      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
+
+      if (!clientGone) sendEvent('done', { text: transcript });
     }
-
-    if (clientGone) return;
-    sendEvent('uploading', {});
-
-    const model = typeof req.query.model === 'string' ? req.query.model : undefined;
-    const transcript = await transcribeAudio(audioPath, () => {
-      if (!clientGone) sendEvent('transcribing', {});
-    }, model, bvid, { ownerName, title, desc, tname, duration, dynamic });
-
-    const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-    log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-3.1-flash-lite' }, 'transcription done');
-
-    if (!clientGone) sendEvent('done', { text: transcript });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    logger.child({ bvid: bvid ?? 'transcribe' }).error({ err }, 'request error');
+    logger.child({ tag: requestTag }).error({ err }, 'request error');
     sendEvent('error', { error: message });
   } finally {
     res.end();

@@ -18,7 +18,7 @@ trap 'rm -f "$TMPFILE"' EXIT
 
 curl -s --no-buffer -N \
   -H "Content-Type: application/json" \
-  -d "{\"type\":\"bilibili\",\"url\":\"$URL\"}" \
+  -d "{\"url\":\"$URL\"}" \
   "$ENDPOINT" \
 | tee "$TMPFILE" \
 | awk '
