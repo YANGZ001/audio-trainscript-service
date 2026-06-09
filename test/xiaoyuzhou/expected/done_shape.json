@@ -1,0 +1,4 @@
+{
+  "_description": "done SSE event payload — plain-text transcript with [MM:SS] content format, Chinese language",
+  "text": "<non-empty string — Gemini's verbatim transcript of the Xiaoyuzhou podcast episode>"
+}

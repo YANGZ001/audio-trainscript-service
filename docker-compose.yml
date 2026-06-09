@@ -11,8 +11,10 @@ services:
     volumes:
       - bilibili-audio-cache:/data/bilibili-audio
       - snipd-audio-cache:/data/snipd-audio
+      - xiaoyuzhou-audio-cache:/data/xiaoyuzhou-audio
     restart: unless-stopped
 
 volumes:
   bilibili-audio-cache:
   snipd-audio-cache:
+  xiaoyuzhou-audio-cache:
