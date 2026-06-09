@@ -16,6 +16,7 @@ interface XiaoyuzhouEpisode {
   description?: string;
   duration?: number;
   enclosure?: { url?: string };
+  media?: { source?: { url?: string } };
   podcast?: { title?: string };
 }
 
@@ -33,6 +34,8 @@ export async function fetchXiaoyuzhouEpisodeData(
     },
   );
 
+  if (res.status !== 200) throw new Error(`Xiaoyuzhou page returned ${res.status}: ${episodeId}`);
+
   const match = res.data.match(/<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]*?)<\/script>/);
   if (!match) throw new Error(`Cannot find __NEXT_DATA__ on Xiaoyuzhou episode page: ${episodeId}`);
 
@@ -40,7 +43,7 @@ export async function fetchXiaoyuzhouEpisodeData(
   const episode = nextData?.props?.pageProps?.episode;
   if (!episode) throw new Error(`Episode data not found in page: ${episodeId}`);
 
-  const audioUrl = episode?.enclosure?.url;
+  const audioUrl = episode?.enclosure?.url ?? episode?.media?.source?.url;
   if (!audioUrl) throw new Error(`No audio URL found for Xiaoyuzhou episode: ${episodeId}`);
 
   const meta: TranscriptMeta = {};
