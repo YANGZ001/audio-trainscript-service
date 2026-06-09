@@ -1,0 +1,6 @@
+# Xiaoyuzhou test URLs
+# Usage: bash test/xiaoyuzhou/run.sh <url>
+#
+# Format: <url>  # <description>
+
+https://www.xiaoyuzhoufm.com/episode/69d7b5e4e2c8be3155ccc32b  # default — 声动早咖啡, 14-min episode, used to verify __NEXT_DATA__ parse + M4A download + Chinese transcript
