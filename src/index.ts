@@ -9,6 +9,7 @@ import { downloadBilibiliAudio, extractBvid, getVideoMetadata, resolveShortUrl }
 import { downloadSnipdAudio, extractSnipdEpisodeId, fetchSnipdEpisodeData } from './services/snipd';
 import { downloadXiaoyuzhouAudio, extractXiaoyuzhouEpisodeId, fetchXiaoyuzhouEpisodeData } from './services/xiaoyuzhou';
 import { cleanupOrphanedGeminiFiles, transcribeAudio, TranscriptMeta } from './services/gemini';
+import { insertTranscription, listTranscriptions, deleteTranscription } from './db';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
@@ -176,6 +177,11 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
 
       if (!clientGone) sendEvent('done', { text: transcript });
+      try {
+        insertTranscription({ source_type: 'bilibili', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
+      } catch (dbErr) {
+        logger.child({ bvid }).warn({ err: dbErr }, 'failed to persist transcription');
+      }
 
     } else if (source === 'snipd') {
       const episodeId = extractSnipdEpisodeId(url);
@@ -228,6 +234,11 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
 
       if (!clientGone) sendEvent('done', { text: transcript });
+      try {
+        insertTranscription({ source_type: 'snipd', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
+      } catch (dbErr) {
+        logger.child({ episodeId }).warn({ err: dbErr }, 'failed to persist transcription');
+      }
 
     } else if (source === 'xiaoyuzhou') {
       const episodeId = extractXiaoyuzhouEpisodeId(url);
@@ -280,6 +291,11 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
 
       if (!clientGone) sendEvent('done', { text: transcript });
+      try {
+        insertTranscription({ source_type: 'xiaoyuzhou', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
+      } catch (dbErr) {
+        logger.child({ episodeId }).warn({ err: dbErr }, 'failed to persist transcription');
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -342,6 +358,30 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
   } finally {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
     res.end();
+  }
+});
+
+app.get('/api/transcriptions', (_req: Request, res: Response) => {
+  try {
+    res.json(listTranscriptions());
+  } catch (err) {
+    logger.error({ err }, 'failed to list transcriptions');
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/transcriptions/:id', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  try {
+    deleteTranscription(id);
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, 'failed to delete transcription');
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
