@@ -326,6 +326,71 @@
     }
 
     .hidden { display: none; }
+
+    /* ── History ── */
+    .history-section { margin-top: 2rem; }
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.875rem;
+    }
+    .history-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .history-empty {
+      font-size: 0.8125rem;
+      color: var(--muted);
+      font-style: italic;
+      padding: 1rem 0;
+      text-align: center;
+    }
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .history-table th {
+      text-align: left;
+      font-size: 0.6875rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      padding: 0 0.5rem 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-table td {
+      padding: 0.625rem 0.5rem 0.625rem 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-table .col-title {
+      color: var(--text);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .title-copy { cursor: pointer; }
+    .title-copy:hover { color: var(--amber); }
+    .history-table .col-source,
+    .history-table .col-date,
+    .history-table .col-dur {
+      color: var(--muted);
+      white-space: nowrap;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6875rem;
+    }
+    .history-table .col-actions {
+      display: flex;
+      gap: 0.375rem;
+      justify-content: flex-end;
+      white-space: nowrap;
+    }
+    .btn-xs { font-size: 0.6875rem; padding: 0.3rem 0.625rem; letter-spacing: 0.03em; }
   </style>
 </head>
 <body>
@@ -403,12 +468,23 @@
         </div>
       </div>
     </div>
+
+    <div class="history-section" id="history-section">
+      <div class="history-header">
+        <span class="history-title">History</span>
+      </div>
+      <div id="history-body">
+        <p class="history-empty">No transcriptions yet.</p>
+      </div>
+    </div>
   </div>
 
   <script>
     let activeTab = 'url';
     let selectedFile = null;
     let abortController = null;
+    let lastTranscriptionWasUrl = false;
+    const transcriptCache = new Map();
 
     function switchTab(tab) {
       activeTab = tab;
@@ -478,6 +554,7 @@
     }
 
     async function startTranscription() {
+      lastTranscriptionWasUrl = (activeTab === 'url');
       if (abortController) abortController.abort();
       abortController = new AbortController();
       const myController = abortController;
@@ -574,6 +651,7 @@
         document.getElementById('copy-btn').disabled = false;
         document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars';
         setStatus('done', 'success');
+        if (lastTranscriptionWasUrl) loadHistory();
       } else if (name === 'error') {
         setStatus(payload?.error || 'unknown error', 'error');
       }
@@ -593,25 +671,133 @@
     }
     */
 
+    // navigator.clipboard requires HTTPS or localhost; falls back to execCommand on plain HTTP
+    async function copyToClipboard(text) {
+      if (navigator.clipboard) {
+        try { await navigator.clipboard.writeText(text); return true; } catch {}
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy'); document.body.removeChild(ta);
+      return ok;
+    }
+
     async function copyTranscript() {
       const text = document.getElementById('transcript').value;
       const btn = document.getElementById('copy-btn');
-
-      // navigator.clipboard requires HTTPS or localhost; fall back to execCommand on plain HTTP
-      let ok = false;
-      if (navigator.clipboard) {
-        try { await navigator.clipboard.writeText(text); ok = true; } catch {}
-      }
-      if (!ok) {
-        const el = document.getElementById('transcript');
-        el.select();
-        el.setSelectionRange(0, 99999);
-        ok = document.execCommand('copy');
-      }
-
+      const ok = await copyToClipboard(text);
       btn.textContent = ok ? 'Copied' : 'Copy All';
       if (ok) setTimeout(() => { btn.textContent = 'Copy All'; }, 1500);
     }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function formatDuration(seconds) {
+      if (seconds == null) return '—';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+      return m + 'm ' + String(s).padStart(2, '0') + 's';
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderHistory(rows) {
+      const body = document.getElementById('history-body');
+      if (!rows.length) {
+        body.innerHTML = '<p class="history-empty">No transcriptions yet.</p>';
+        return;
+      }
+      transcriptCache.clear();
+      rows.forEach(row => transcriptCache.set(row.id, row.transcript));
+      const rowsHtml = rows.map(row => {
+        const title = row.title ? escapeHtml(row.title) : '(untitled)';
+        const owner = row.owner_name ? ' · ' + escapeHtml(row.owner_name) : '';
+        const tooltip = escapeHtml((row.title || '') + (row.owner_name ? ' · ' + row.owner_name : ''));
+        return `<tr>
+          <td class="col-title"><span class="title-copy" title="${tooltip}" data-action="copy-title" data-title="${tooltip}">${title}</span></td>
+          <td class="col-source">${escapeHtml(row.source_type)}</td>
+          <td class="col-date">${formatDate(row.created_at)}</td>
+          <td class="col-dur">${formatDuration(row.duration)}</td>
+          <td class="col-actions">
+            <button class="btn btn-ghost btn-xs" data-action="copy-transcript" data-id="${row.id}">Copy transcript</button>
+            <button class="btn btn-ghost btn-xs" data-action="redo" data-url="${escapeHtml(row.source_url)}">Redo</button>
+            <button class="btn btn-ghost btn-xs" data-action="delete" data-id="${row.id}" style="color:var(--error);border-color:var(--error)">Del</button>
+          </td>
+        </tr>`;
+      }).join('');
+      body.innerHTML = `<table class="history-table">
+        <thead><tr>
+          <th>Title</th><th>Type</th><th>Date</th><th>Duration</th><th></th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`;
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/transcriptions');
+        if (!res.ok) { console.warn('loadHistory: server returned', res.status); return; }
+        renderHistory(await res.json());
+      } catch (err) {
+        console.warn('loadHistory failed', err);
+      }
+    }
+
+    function redoTranscription(url) {
+      switchTab('url');
+      document.getElementById('url-input').value = url;
+      startTranscription();
+    }
+
+    async function deleteHistoryRow(id, btn) {
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/transcriptions/' + id, { method: 'DELETE' });
+        if (res.ok) await loadHistory();
+        else btn.disabled = false;
+      } catch {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('history-body').addEventListener('click', async (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+      const action = el.dataset.action;
+      if (action === 'redo') redoTranscription(el.dataset.url);
+      else if (action === 'delete') deleteHistoryRow(Number(el.dataset.id), el);
+      else if (action === 'copy-transcript') {
+        const text = transcriptCache.get(Number(el.dataset.id));
+        if (!text) return;
+        if (await copyToClipboard(text)) {
+          const orig = el.textContent;
+          el.textContent = 'Copied!';
+          setTimeout(() => { el.textContent = orig; }, 1200);
+        }
+      }
+      else if (action === 'copy-title') {
+        const text = el.dataset.title;
+        if (await copyToClipboard(text)) {
+          const original = el.innerHTML;
+          el.textContent = 'Copied!';
+          setTimeout(() => { el.innerHTML = original; }, 1200);
+        }
+      }
+    });
+
+    loadHistory();
   </script>
 </body>
 </html>
