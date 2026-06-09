@@ -462,8 +462,6 @@
         <textarea class="transcript-area" id="transcript" readonly placeholder="transcript will appear here…"></textarea>
         <div class="output-actions">
           <span class="char-count" id="char-count"></span>
-          <!-- Format button disabled: output is now plain text, not JSON -->
-          <button class="btn btn-ghost" id="format-btn" disabled>Format</button>
           <button class="btn btn-ghost" id="copy-btn" disabled onclick="copyTranscript()">Copy All</button>
         </div>
       </div>
@@ -560,7 +558,6 @@
       const myController = abortController;
 
       document.getElementById('transcript').value = '';
-      document.getElementById('format-btn').disabled = true;
       document.getElementById('copy-btn').disabled = true;
       document.getElementById('char-count').textContent = '';
       setProgress(0);
@@ -647,7 +644,6 @@
       } else if (name === 'done') {
         const text = typeof payload?.text === 'string' ? payload.text : '';
         document.getElementById('transcript').value = text;
-        // document.getElementById('format-btn').disabled = false;
         document.getElementById('copy-btn').disabled = false;
         document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars';
         setStatus('done', 'success');
@@ -656,20 +652,6 @@
         setStatus(payload?.error || 'unknown error', 'error');
       }
     }
-
-    /* formatTranscript disabled: output is plain text, not JSON
-    function formatTranscript() {
-      const ta = document.getElementById('transcript');
-      try {
-        const parsed = JSON.parse(ta.value);
-        const formatted = JSON.stringify(parsed, null, 2);
-        ta.value = formatted;
-        document.getElementById('char-count').textContent = formatted.length.toLocaleString() + ' chars';
-      } catch (err) {
-        setStatus('format error: ' + err.message, 'error');
-      }
-    }
-    */
 
     // navigator.clipboard requires HTTPS or localhost; falls back to execCommand on plain HTTP
     async function copyToClipboard(text) {
