@@ -765,8 +765,6 @@
         body.innerHTML = '<p class="history-empty">No transcriptions yet.</p>';
         return;
       }
-      transcriptCache.clear();
-      rows.forEach(row => transcriptCache.set(row.id, row.transcript));
       const rowsHtml = rows.map(row => {
         const title = row.title ? escapeHtml(row.title) : '(untitled)';
         const owner = row.owner_name ? ' · ' + escapeHtml(row.owner_name) : '';
@@ -817,10 +815,27 @@
       const action = el.dataset.action;
       if (action === 'delete') deleteHistoryRow(Number(el.dataset.id), el);
       else if (action === 'copy-transcript') {
-        const text = transcriptCache.get(Number(el.dataset.id));
-        if (!text) return;
+        const id = Number(el.dataset.id);
+        const orig = el.textContent;
+        let text = transcriptCache.get(id);
+        if (text === undefined) {
+          el.disabled = true;
+          el.textContent = 'Loading…';
+          try {
+            const res = await fetch('/api/transcriptions/' + id);
+            if (!res.ok) throw new Error('server returned ' + res.status);
+            text = (await res.json()).transcript;
+            transcriptCache.set(id, text);
+          } catch (err) {
+            console.warn('copy-transcript fetch failed', err);
+            el.textContent = 'Failed';
+            setTimeout(() => { el.textContent = orig; el.disabled = false; }, 1200);
+            return;
+          }
+          el.disabled = false;
+          el.textContent = orig;
+        }
         if (await copyToClipboard(text)) {
-          const orig = el.textContent;
           el.textContent = 'Copied!';
           setTimeout(() => { el.textContent = orig; }, 1200);
         }

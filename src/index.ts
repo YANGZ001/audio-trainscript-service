@@ -251,6 +251,25 @@ app.get('/api/transcriptions', (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/transcriptions/:id', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  try {
+    const row = getTranscription(id);
+    if (!row) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json({ transcript: row.transcript });
+  } catch (err) {
+    logger.error({ err }, 'failed to get transcription');
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 app.delete('/api/transcriptions/:id', (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
