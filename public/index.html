@@ -477,11 +477,6 @@
         </div>
 
         <div class="bottom-row">
-          <div class="model-group">
-            <label for="model-select">Model</label>
-            <!-- Options are populated from /api/models (config/rate-limits.json). -->
-            <select id="model-select"></select>
-          </div>
           <button class="btn btn-primary" id="submit-btn" onclick="startTranscription()">Transcribe</button>
         </div>
       </div>
@@ -612,7 +607,6 @@
     async function enqueueUrlJob() {
       const url = document.getElementById('url-input').value.trim();
       if (!url) { setUrlStatus('please enter a url', 'error'); return; }
-      const model = document.getElementById('model-select').value;
       const btn = document.getElementById('submit-btn');
       btn.disabled = true;
       setUrlStatus('queuing…');
@@ -620,7 +614,7 @@
         const res = await fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, model }),
+          body: JSON.stringify({ url }),
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -657,12 +651,11 @@
       setRunning(true);
       setStatus('connecting…');
 
-      const model = document.getElementById('model-select').value;
       let response;
       try {
         const formData = new FormData();
         formData.append('file', selectedFile);
-        response = await fetch('/api/upload-transcribe?model=' + encodeURIComponent(model), {
+        response = await fetch('/api/upload-transcribe', {
           method: 'POST',
           body: formData,
           signal: abortController.signal,
@@ -943,27 +936,6 @@
       pollJobs();
     });
 
-    // Populate the model picker from the server config; first entry is the default.
-    async function loadModels() {
-      try {
-        const res = await fetch('/api/models');
-        if (!res.ok) return;
-        const { models } = await res.json();
-        const select = document.getElementById('model-select');
-        select.innerHTML = '';
-        (models || []).forEach((m, i) => {
-          const opt = document.createElement('option');
-          opt.value = m;
-          opt.textContent = m;
-          if (i === 0) opt.selected = true;
-          select.appendChild(opt);
-        });
-      } catch (err) {
-        console.warn('loadModels failed', err);
-      }
-    }
-
-    loadModels();
     loadHistory();
     startQueuePolling();
     pollJobs();

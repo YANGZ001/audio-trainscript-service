@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import logger from '../logger';
+import { GEMINI_MODEL } from '../services/gemini';
 
 export interface RateLimit {
   rpm: number;
@@ -10,6 +11,7 @@ export interface RateLimit {
 interface RateLimitConfig {
   default: RateLimit;
   models: Record<string, RateLimit>;
+  fallback?: string[];
 }
 
 const FALLBACK: RateLimitConfig = {
@@ -38,7 +40,9 @@ export function getRateLimit(model: string): RateLimit {
   return cfg.models[model] ?? cfg.default;
 }
 
-// The configured model IDs, in config order. Used to populate the UI model picker.
-export function listModels(): string[] {
-  return Object.keys(load().models);
+// Ordered model chain the worker walks for every job. Falls back to the Gemini
+// default model when no chain is configured.
+export function getFallbackChain(): string[] {
+  const chain = load().fallback;
+  return chain && chain.length > 0 ? chain : [GEMINI_MODEL];
 }

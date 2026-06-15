@@ -143,6 +143,8 @@ flowchart LR
 
 URL transcriptions run through an asynchronous queue drained by a single worker, which is the only component that calls Gemini. Per-model requests-per-minute (RPM) and requests-per-day (RPD) limits are read from [`config/rate-limits.json`](./config/rate-limits.json) — edit `default` and per-model `models` entries to match your Gemini quota. The file is read once at startup, so restart the service after editing. Override the path with `RATE_LIMITS_PATH` if needed.
 
+Every job is transcribed by walking the ordered `fallback` chain in the same config: the worker uses the first chain model that has quota, skips a capped model (waiting only when the whole chain is capped), and steps down to the next model on a transient provider error. There is no per-job model selection — order the chain best-first.
+
 ---
 
 ## Detailed Usage Instructions
