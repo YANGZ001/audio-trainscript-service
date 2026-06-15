@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines persistent transcription history. Completed URL transcriptions are stored in a SQLite database (WAL journal) and exposed through a list/delete API and a History UI with copy, redo, and delete actions. File uploads are not persisted. History survives service restarts.
+Defines persistent transcription history. Completed URL transcriptions are stored in a SQLite database (WAL journal) and exposed through a list/delete API and a History UI with copy and delete actions. File uploads are not persisted. History survives service restarts.
 
 ## Requirements
 ### Requirement: Transcription persistence
@@ -64,17 +64,6 @@ The system SHALL render a history table below the transcription form in `public/
 #### Scenario: Empty history state
 - **WHEN** there are no persisted transcriptions
 - **THEN** the history section displays an "No transcriptions yet." message
-
-### Requirement: Redo from history
-The system SHALL allow users to re-transcribe any URL-based history entry, creating a new row.
-
-#### Scenario: Redo pre-fills URL and submits
-- **WHEN** the user clicks the Redo button on a history row
-- **THEN** the URL tab is activated, the URL input is pre-filled with the row's `source_url`, and transcription starts automatically
-
-#### Scenario: Redo creates new row, preserves original
-- **WHEN** a redo transcription completes
-- **THEN** a new row is inserted into the database and the original row remains unchanged
 
 ### Requirement: Delete from history UI
 The system SHALL allow users to delete a history entry from the UI.
