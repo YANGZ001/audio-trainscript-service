@@ -46,6 +46,7 @@ const g = globalThis as typeof globalThis & {
     listJobs: Database.Statement;
     getJob: Database.Statement;
     requeueProcessingJobs: Database.Statement;
+    pruneDoneJobs: Database.Statement;
     cancelJob: Database.Statement;
     logApiCall: Database.Statement;
     countApiCalls: Database.Statement;
@@ -97,6 +98,9 @@ function getDb(): Database.Database {
     g.__db = new Database(dbPath);
     g.__db.pragma('journal_mode = WAL');
     g.__db.pragma('foreign_keys = ON');
+    // Wait (rather than throw SQLITE_BUSY) if a write briefly contends with a
+    // concurrent read — so a completed transcript is never lost to a lock blip.
+    g.__db.pragma('busy_timeout = 5000');
     g.__db.exec(SCHEMA);
     for (const migration of MIGRATIONS) {
       try {
@@ -138,11 +142,12 @@ function getStmts() {
       markJobFailed: db.prepare(
         `UPDATE jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`
       ),
-      listJobs: db.prepare('SELECT * FROM jobs ORDER BY created_at DESC'),
+      listJobs: db.prepare(`SELECT * FROM jobs WHERE status != 'done' ORDER BY created_at DESC`),
       getJob: db.prepare('SELECT * FROM jobs WHERE id = ?'),
       requeueProcessingJobs: db.prepare(
         `UPDATE jobs SET status = 'queued', stage = NULL, progress = NULL, updated_at = ? WHERE status = 'processing'`
       ),
+      pruneDoneJobs: db.prepare(`DELETE FROM jobs WHERE status = 'done' AND updated_at < ?`),
       cancelJob: db.prepare(`DELETE FROM jobs WHERE id = ? AND status IN ('queued', 'failed')`),
       logApiCall: db.prepare('INSERT INTO api_calls (model, ts) VALUES (?, ?)'),
       countApiCalls: db.prepare('SELECT COUNT(*) AS n FROM api_calls WHERE model = ? AND ts > ?'),
@@ -216,8 +221,16 @@ export function markJobFailed(id: number, error: string): void {
   getStmts().markJobFailed.run(error, new Date().toISOString(), id);
 }
 
+// Active and failed jobs only — `done` jobs are excluded (their transcript lives
+// in History) and pruned by the worker, so the polling payload stays small.
 export function listJobs(): JobRow[] {
   return getStmts().listJobs.all() as JobRow[];
+}
+
+// Deletes `done` jobs older than `ttlMs`. The short retention lets an in-flight
+// /api/transcribe tail read the linked transcript before the row disappears.
+export function pruneDoneJobs(ttlMs: number): void {
+  getStmts().pruneDoneJobs.run(new Date(Date.now() - ttlMs).toISOString());
 }
 
 export function getJob(id: number): JobRow | undefined {

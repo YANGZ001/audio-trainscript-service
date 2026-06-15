@@ -46,6 +46,13 @@
 - [x] 7a.3 Broaden `DELETE /api/jobs/:id` to remove `failed` jobs (dismiss) as well as `queued` (cancel); `processing` → 409
 - [x] 7a.4 Queue panel shows Retry + Dismiss on failed rows; Retry re-enqueues same URL+model and removes the old failed row
 
+## 7b. Code-review follow-ups (PR #25)
+
+- [x] 7b.1 `GET /api/jobs` excludes `done` jobs; worker prunes `done` rows after a 60s TTL so the polling payload and table stay bounded (frontend detects completion by an active job vanishing)
+- [x] 7b.2 `busy_timeout=5000` pragma so a write never loses a completed transcript to a transient SQLITE_BUSY lock blip
+- [x] 7b.3 Stop retrying provider `429` (rate limiting is owned by `waitForRateLimit`); retry only 5xx + network errors
+- [x] 7b.4 README notes the rate-limit config is read once at startup (restart after editing)
+
 ## 8. Verification
 
 - [x] 7.1 `docker compose up --build`; service listens on 3001

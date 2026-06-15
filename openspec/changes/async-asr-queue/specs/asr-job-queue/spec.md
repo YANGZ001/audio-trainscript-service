@@ -24,14 +24,19 @@ The system SHALL accept a transcription request for a supported URL source (Bili
 - **WHEN** the `url` does not match a Bilibili, Snipd, or Xiaoyuzhou episode URL
 - **THEN** the system responds `400` with an error message and persists no job
 
-### Requirement: List jobs
+### Requirement: List active jobs
 
-The system SHALL expose `GET /api/jobs` returning the persisted jobs ordered most-recent first, including each job's status, stage, progress, error, and linked transcription id.
+The system SHALL expose `GET /api/jobs` returning the in-flight (`queued`, `processing`) and `failed` jobs ordered most-recent first, including each job's status, stage, progress, error, and linked transcription id. Completed (`done`) jobs SHALL be excluded, since their transcript is available in History.
 
 #### Scenario: Client polls job status
 
 - **WHEN** a client sends `GET /api/jobs`
-- **THEN** the system returns a JSON array of jobs, each containing at least `id`, `source_type`, `source_url`, `status`, `stage`, `progress`, `error`, and `transcription_id`
+- **THEN** the system returns a JSON array of the queued, processing, and failed jobs, each containing at least `id`, `source_type`, `source_url`, `status`, `stage`, `progress`, `error`, and `transcription_id`
+
+#### Scenario: Completed jobs are removed
+
+- **WHEN** a job finishes successfully and its transcript is persisted
+- **THEN** the job no longer appears in `GET /api/jobs`, and its row is pruned shortly after so the table does not grow unbounded
 
 ### Requirement: Remove a queued or failed job
 

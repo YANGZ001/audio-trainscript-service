@@ -8,6 +8,7 @@ import {
   logApiCall,
   countApiCalls,
   requeueProcessingJobs,
+  pruneDoneJobs,
 } from '../db';
 import { transcribeFromUrl } from '../services/transcribePipeline';
 import { GEMINI_MODEL } from '../services/gemini';
@@ -16,6 +17,7 @@ import { getRateLimit } from '../config/rateLimits';
 const IDLE_POLL_MS = 1000;
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DONE_JOB_TTL_MS = 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_MS = 2000;
 const RETRYABLE_NET_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ECONNREFUSED']);
@@ -24,11 +26,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Transient failures worth retrying: provider 429/5xx and common network blips.
-// Permanent errors (4xx, auth, validation) are not retried.
+// Transient failures worth retrying: provider 5xx (e.g. UNAVAILABLE) and common
+// network blips. 429 is NOT retried here — rate limiting is owned by
+// waitForRateLimit; a 429 means the provider's quota is spent, so retrying with
+// a short backoff would just burn more. Permanent errors (4xx/auth/validation)
+// are not retried either.
 function isRetryable(err: unknown): boolean {
   const status = (err as { status?: unknown }).status;
-  if (typeof status === 'number') return status === 429 || status >= 500;
+  if (typeof status === 'number') return status >= 500;
   const code = (err as { code?: unknown }).code;
   if (typeof code === 'string') return RETRYABLE_NET_CODES.has(code);
   return false;
@@ -104,6 +109,8 @@ async function processJob(job: { id: number; source_url: string; model: string |
 
 async function loop(): Promise<void> {
   for (;;) {
+    pruneDoneJobs(DONE_JOB_TTL_MS);
+
     let job;
     try {
       job = claimNextJob();

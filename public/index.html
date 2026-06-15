@@ -898,13 +898,15 @@
         jobs = await res.json();
       } catch { return; }
 
-      let newlyDone = false;
-      for (const j of jobs) {
-        const prev = knownJobStatuses.get(j.id);
-        if (j.status === 'done' && prev && prev !== 'done') newlyDone = true;
+      // Completed jobs drop off the list (done jobs aren't returned); when a job
+      // we knew as active disappears, a transcript likely landed in History.
+      const currentIds = new Set(jobs.map(j => j.id));
+      let activeVanished = false;
+      for (const [id, status] of knownJobStatuses) {
+        if (!currentIds.has(id) && (status === 'queued' || status === 'processing')) activeVanished = true;
       }
       knownJobStatuses = new Map(jobs.map(j => [j.id, j.status]));
-      if (newlyDone) loadHistory();
+      if (activeVanished) loadHistory();
 
       renderQueue(jobs);
 

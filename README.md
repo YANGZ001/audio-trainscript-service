@@ -141,7 +141,7 @@ flowchart LR
 
 ### Rate limits
 
-URL transcriptions run through an asynchronous queue drained by a single worker, which is the only component that calls Gemini. Per-model requests-per-minute (RPM) and requests-per-day (RPD) limits are read from [`config/rate-limits.json`](./config/rate-limits.json) — edit `default` and per-model `models` entries to match your Gemini quota. Override the path with `RATE_LIMITS_PATH` if needed.
+URL transcriptions run through an asynchronous queue drained by a single worker, which is the only component that calls Gemini. Per-model requests-per-minute (RPM) and requests-per-day (RPD) limits are read from [`config/rate-limits.json`](./config/rate-limits.json) — edit `default` and per-model `models` entries to match your Gemini quota. The file is read once at startup, so restart the service after editing. Override the path with `RATE_LIMITS_PATH` if needed.
 
 ---
 
