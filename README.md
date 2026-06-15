@@ -24,6 +24,7 @@ flowchart LR
     subgraph Service ["Audio Trainscript Service (Docker Container)"]
         direction TB
         Router["Express API Server / Router<br/>(src/index.ts)"]
+        Worker["Queue Worker<br/>single FIFO drainer<br/>(src/queue/worker.ts)"]
 
         subgraph Internal ["Source Services"]
             direction LR
@@ -33,15 +34,19 @@ flowchart LR
             GeminiSrv["Gemini Service<br/>(src/services/gemini.ts)"]
         end
 
+        DB[("SQLite DB<br/>(better-sqlite3, /data/db/transcriptions.db)<br/>jobs · transcriptions · api_calls")]
         BiliCache[("Bilibili Cache<br/>(/data/bilibili-audio/*.m4a)<br/>90-day TTL")]
         SnipdCache[("Snipd Cache<br/>(/data/snipd-audio/*.mp3)<br/>90-day TTL")]
         XyzCache[("Xiaoyuzhou Cache<br/>(/data/xiaoyuzhou-audio/*.m4a)<br/>90-day TTL")]
         TempDisk[("Upload Temp<br/>(/tmp/*.m4a)")]
 
-        Router -->|bilibili URL| BiliSrv
-        Router -->|snipd URL| SnipdSrv
-        Router -->|xiaoyuzhou URL| XyzSrv
-        Router -->|Transcribe| GeminiSrv
+        Router -->|enqueue URL job| DB
+        Router -->|"upload-transcribe (synchronous)"| GeminiSrv
+        Worker -->|"claim, update & save"| DB
+        Worker -->|bilibili URL| BiliSrv
+        Worker -->|snipd URL| SnipdSrv
+        Worker -->|xiaoyuzhou URL| XyzSrv
+        Worker -->|transcribe via fallback chain| GeminiSrv
         BiliSrv -->|Cache miss/hit| BiliCache
         SnipdSrv -->|Cache miss/hit| SnipdCache
         XyzSrv -->|Cache miss/hit| XyzCache
@@ -61,12 +66,12 @@ flowchart LR
 
     %% Client Interactions
     Web -->|POST /api/transcribe| Router
-    BrowserUI -->|"POST /api/transcribe<br/>POST /api/upload-transcribe"| Router
+    BrowserUI -->|"POST /api/jobs · /api/upload-transcribe<br/>GET /api/jobs · /api/transcriptions"| Router
     CLI -->|POST /api/transcribe| Router
     cURL -->|POST /api/transcribe| Router
-    Router -.->|"SSE stream<br/>(downloading, uploading, transcribing, done)"| Web
-    Router -.->|"SSE stream<br/>(downloading, uploading, transcribing, done)"| BrowserUI
-    Router -.->|"SSE stream<br/>(downloading, uploading, transcribing, done)"| CLI
+    Router -.->|"SSE stream<br/>(downloading, uploading, transcribing, done, error)"| Web
+    Router -.->|"SSE + JSON polling<br/>(queue status · history)"| BrowserUI
+    Router -.->|"SSE stream<br/>(downloading, uploading, transcribing, done, error)"| CLI
     Router -.->|"Serves index.html (GET /)"| BrowserUI
 
     %% External API Connections
@@ -89,8 +94,8 @@ flowchart LR
     class SnipdSrv,SnipdAPI snipd;
     class XyzSrv,XyzPage xyz;
     class GeminiSrv,GeminiAPI gemini;
-    class Router router;
-    class BiliCache,SnipdCache,XyzCache,TempDisk storage;
+    class Router,Worker router;
+    class BiliCache,SnipdCache,XyzCache,TempDisk,DB storage;
 ```
 
 ---
@@ -98,7 +103,7 @@ flowchart LR
 ## Component Overviews
 
 ### 1. Clients & Integration Layer
-* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili URL input and `.m4a` file upload (drag-and-drop), displays real-time SSE progress, and outputs the transcript as timestamped plain text with a one-click copy action. No installation required — open `http://<host>:3001` in any browser.
+* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili/Snipd/Xiaoyuzhou URL input and `.m4a` file upload (drag-and-drop). URL submissions are enqueued and tracked in a live **Queue** panel (per-job stage/progress, with cancel and retry); finished runs land in a persistent **History** table offering copy-transcript and delete actions. File uploads stream real-time SSE progress into an output panel with a one-click copy. Transcripts are timestamped plain text (`[MM:SS] Speaker: text`). No installation required — open `http://<host>:3001` in any browser.
 * **React Web UI (`bilibili-copilot-web`)**: The downstream application that calls the service over a Tailscale connection and integrates transcription as a subtitle fallback.
 * **CLI Scripts**: Helper scripts included in the repository (`test.sh` for Bilibili URLs and `transcribe-file.sh` for local files) that make raw curl requests and format the Server-Sent Events output.
 * **cURL/REST API**: Direct HTTP API access for testing and integrations.
@@ -108,6 +113,14 @@ flowchart LR
   * Manages routing, file uploads (`multer` middleware), and HTTP connection lifecycles.
   * Streams real-time progress events back to clients as **Server-Sent Events (SSE)**.
   * Detects client disconnections to terminate long-running processes early.
+  * Exposes the queue and history APIs (see the endpoint table below).
+* **Queue Worker (`src/queue/worker.ts`)**:
+  * A single background worker started at boot that drains the FIFO job queue.
+  * For each job, downloads via the matching source service and transcribes through the model fallback chain, persisting the result to the History table.
+  * Re-queues any job left in `processing` at startup (crash recovery).
+* **SQLite Store (`src/db.ts`)**:
+  * A `better-sqlite3` database at `/data/db/transcriptions.db` (volume `transcriptions-db`, overridable via `DB_PATH`).
+  * Holds the `jobs` queue, completed `transcriptions` (the History list), and `api_calls` used to enforce per-model RPM/RPD limits.
 * **Bilibili Service (`src/services/bilibili.ts`)**:
   * Resolves `b23.tv` short URLs to canonical `bilibili.com` URLs before any processing.
   * Extracts the Bilibili Video ID (`BVID`).
@@ -137,7 +150,23 @@ flowchart LR
 * **Bilibili APIs**: Used to resolve stream URLs and download audio. Requires `BILIBILI_SESSION_TOKEN` (the `SESSDATA` cookie) for authenticated request access.
 * **Snipd GraphQL API** (`api.snipd.com`): Queried with the episode UUID to fetch the MP3 audio URL and metadata. No authentication required.
 * **Xiaoyuzhou Episode Page + CDN** (`xiaoyuzhoufm.com` / `xyzcdn.net`): The public episode page embeds full episode JSON in a `__NEXT_DATA__` block; the CDN serves M4A audio publicly. No authentication required.
-* **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) utilizing models such as `gemini-2.5-flash-lite`.
+* **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) using the configurable model fallback chain in `config/rate-limits.json` (first choice `gemini-3.1-flash-lite`).
+
+### API Endpoints
+
+| Method   | Path                        | Purpose |
+|----------|-----------------------------|---------|
+| `GET`    | `/`                         | Serves the built-in browser UI (`public/index.html`). |
+| `GET`    | `/health`                   | Health check — returns `{ "status": "ok" }`. |
+| `POST`   | `/api/jobs`                 | Enqueue a URL transcription job; returns `{ id, status: "queued" }`. |
+| `GET`    | `/api/jobs`                 | List active/failed jobs for the Queue panel (completed jobs excluded). |
+| `DELETE` | `/api/jobs/:id`             | Cancel a queued job or dismiss a failed one. |
+| `POST`   | `/api/transcribe`           | Backward-compatible SSE endpoint — enqueues a URL job and tails its progress as SSE. |
+| `POST`   | `/api/upload-transcribe`    | Transcribe an uploaded `.m4a` synchronously over SSE (not queued, not persisted). |
+| `GET`    | `/api/transcriptions`       | List completed transcriptions (the History table). |
+| `DELETE` | `/api/transcriptions/:id`   | Delete a completed transcription. |
+
+SSE events emitted by the streaming endpoints: `downloading` (with `progress`), `uploading`, `transcribing`, `done` (with `text`), and `error`.
 
 ### Rate limits
 
