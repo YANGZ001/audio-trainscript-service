@@ -7,7 +7,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
 import { detectSource } from './services/transcribePipeline';
-import { listModels } from './config/rateLimits';
 import { startWorker } from './queue/worker';
 import {
   listTranscriptions,
@@ -61,13 +60,8 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-// The model picker is driven by the configured models so the UI and rate limits stay in sync.
-app.get('/api/models', (_req: Request, res: Response) => {
-  res.json({ models: listModels() });
-});
-
 app.post('/api/jobs', (req: Request, res: Response) => {
-  const { url, model } = req.body as { url?: string; model?: string };
+  const { url } = req.body as { url?: string };
 
   if (typeof url !== 'string' || !url) {
     res.status(400).json({ error: 'Request body must include a url string' });
@@ -82,11 +76,7 @@ app.post('/api/jobs', (req: Request, res: Response) => {
     return;
   }
 
-  const id = enqueueJob({
-    source_type: source,
-    source_url: url,
-    model: typeof model === 'string' && model.trim() ? model : undefined,
-  });
+  const id = enqueueJob({ source_type: source, source_url: url });
   logger.child({ jobId: id }).info({ source }, 'job enqueued');
   res.status(201).json({ id, status: 'queued' });
 });
@@ -137,8 +127,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     return;
   }
 
-  const model = typeof req.query.model === 'string' && req.query.model.trim() ? req.query.model : undefined;
-  const jobId = enqueueJob({ source_type: source, source_url: url, model });
+  const jobId = enqueueJob({ source_type: source, source_url: url });
   const log = logger.child({ jobId, tag: 'transcribe' });
   log.info({ source }, 'transcribe request enqueued');
 

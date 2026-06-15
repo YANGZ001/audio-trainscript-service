@@ -11,6 +11,7 @@ export interface TranscriptionRow {
   owner_name: string | null;
   duration: number | null;
   transcript: string;
+  model: string | null;
   created_at: string;
 }
 
@@ -88,7 +89,8 @@ const SCHEMA = `
 `;
 
 const MIGRATIONS: string[] = [
-  // Future additive ALTER TABLE statements go here.
+  // Records which fallback-chain model produced each transcript.
+  `ALTER TABLE transcriptions ADD COLUMN model TEXT`,
 ];
 
 function getDb(): Database.Database {
@@ -118,15 +120,15 @@ function getStmts() {
     const db = getDb();
     g.__dbStmts = {
       insert: db.prepare(
-        `INSERT INTO transcriptions (source_type, source_url, title, owner_name, duration, transcript, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO transcriptions (source_type, source_url, title, owner_name, duration, transcript, model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ),
       list: db.prepare('SELECT * FROM transcriptions ORDER BY created_at DESC'),
       delete: db.prepare('DELETE FROM transcriptions WHERE id = ?'),
       getTranscription: db.prepare('SELECT * FROM transcriptions WHERE id = ?'),
       enqueueJob: db.prepare(
-        `INSERT INTO jobs (source_type, source_url, model, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'queued', ?, ?)`
+        `INSERT INTO jobs (source_type, source_url, status, created_at, updated_at)
+         VALUES (?, ?, 'queued', ?, ?)`
       ),
       claimNextJob: db.prepare(
         `UPDATE jobs SET status = 'processing', updated_at = ?
@@ -164,6 +166,7 @@ export function insertTranscription(params: {
   owner_name?: string;
   duration?: number;
   transcript: string;
+  model?: string;
 }): number {
   const result = getStmts().insert.run(
     params.source_type,
@@ -172,6 +175,7 @@ export function insertTranscription(params: {
     params.owner_name ?? null,
     params.duration ?? null,
     params.transcript,
+    params.model ?? null,
     new Date().toISOString(),
   );
   return result.lastInsertRowid as number;
@@ -192,13 +196,11 @@ export function getTranscription(id: number): TranscriptionRow | undefined {
 export function enqueueJob(params: {
   source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
   source_url: string;
-  model?: string;
 }): number {
   const now = new Date().toISOString();
   const result = getStmts().enqueueJob.run(
     params.source_type,
     params.source_url,
-    params.model ?? null,
     now,
     now,
   );

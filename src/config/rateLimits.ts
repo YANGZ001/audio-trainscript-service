@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import logger from '../logger';
+import { GEMINI_MODEL } from '../services/gemini';
 
 export interface RateLimit {
   rpm: number;
@@ -10,6 +11,7 @@ export interface RateLimit {
 interface RateLimitConfig {
   default: RateLimit;
   models: Record<string, RateLimit>;
+  fallback?: string[];
 }
 
 const FALLBACK: RateLimitConfig = {
@@ -30,6 +32,17 @@ function load(): RateLimitConfig {
     logger.warn({ err, path: CONFIG_PATH }, 'rate-limits config unreadable, using fallback');
     cached = FALLBACK;
   }
+  // Drop chain entries with no `models` config: an unknown model ID returns a
+  // non-retryable 4xx, which would fail every job (the chain is walked for all
+  // of them). Validate once at load so a typo degrades instead of breaking.
+  if (cached.fallback) {
+    const known = cached.fallback.filter((m) => m in cached!.models);
+    const dropped = cached.fallback.filter((m) => !(m in cached!.models));
+    if (dropped.length > 0) {
+      logger.warn({ dropped }, 'fallback chain has unknown models (no config.models entry), dropping them');
+    }
+    cached.fallback = known;
+  }
   return cached;
 }
 
@@ -38,7 +51,9 @@ export function getRateLimit(model: string): RateLimit {
   return cfg.models[model] ?? cfg.default;
 }
 
-// The configured model IDs, in config order. Used to populate the UI model picker.
-export function listModels(): string[] {
-  return Object.keys(load().models);
+// Ordered model chain the worker walks for every job. Falls back to the Gemini
+// default model when no chain is configured.
+export function getFallbackChain(): string[] {
+  const chain = load().fallback;
+  return chain && chain.length > 0 ? chain : [GEMINI_MODEL];
 }

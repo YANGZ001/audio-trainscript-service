@@ -11,15 +11,13 @@ import {
   pruneDoneJobs,
 } from '../db';
 import { transcribeFromUrl } from '../services/transcribePipeline';
-import { GEMINI_MODEL } from '../services/gemini';
-import { getRateLimit } from '../config/rateLimits';
+import { getRateLimit, getFallbackChain } from '../config/rateLimits';
 
 const IDLE_POLL_MS = 1000;
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DONE_JOB_TTL_MS = 60 * 1000;
-const MAX_ATTEMPTS = 3;
-const RETRY_BASE_MS = 2000;
+const WAIT_POLL_MS = 2000;
 const RETRYABLE_NET_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ECONNREFUSED']);
 
 function sleep(ms: number): Promise<void> {
@@ -52,34 +50,45 @@ function errMessage(err: unknown): string {
   return err.message;
 }
 
-// Blocks until dispatching a request for `model` would stay within both its
-// per-minute and per-day caps. Re-checks periodically as old calls age out.
-async function waitForRateLimit(model: string): Promise<void> {
+// True when a request for `model` is within both its per-minute and per-day caps.
+function hasQuota(model: string): boolean {
   const { rpm, rpd } = getRateLimit(model);
+  return countApiCalls(model, MINUTE_MS) < rpm && countApiCalls(model, DAY_MS) < rpd;
+}
+
+// Blocks until one of `models` has a free slot, then returns it.
+async function waitForSoonest(models: string[]): Promise<string> {
   let logged = false;
-  while (true) {
-    const inMinute = countApiCalls(model, MINUTE_MS);
-    const inDay = countApiCalls(model, DAY_MS);
-    if (inMinute < rpm && inDay < rpd) return;
+  for (;;) {
+    const available = models.find(hasQuota);
+    if (available) return available;
     if (!logged) {
-      logger.info({ model, inMinute, rpm, inDay, rpd }, 'rate limit reached, waiting');
+      logger.info({ models }, 'all fallback models capped, waiting');
       logged = true;
     }
-    await sleep(inMinute >= rpm ? 2000 : 30000);
+    await sleep(WAIT_POLL_MS);
   }
 }
 
-async function processJob(job: { id: number; source_url: string; model: string | null }): Promise<void> {
+// Transcribes a job by walking the fallback chain: prefer the first model with
+// quota, skip capped ones (waiting only when all are capped), and step down to
+// the next model on a transient error. Permanent errors fail fast.
+async function processJob(job: { id: number; source_url: string }): Promise<void> {
   const log = logger.child({ jobId: job.id });
-  const model = job.model ?? GEMINI_MODEL;
+  const chain = getFallbackChain();
+  const tried = new Set<string>();
+  let lastErr: unknown = new Error('No fallback models available');
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    // Each attempt is a real provider request — gate and record it against the limits.
-    await waitForRateLimit(model);
+  for (;;) {
+    const remaining = chain.filter((m) => !tried.has(m));
+    if (remaining.length === 0) throw lastErr;
+
+    // Prefer a model with quota now; otherwise wait for the soonest to free.
+    const model = remaining.find(hasQuota) ?? (await waitForSoonest(remaining));
+
     logApiCall(model);
-
     try {
-      const { source_type, transcript, meta } = await transcribeFromUrl(job.source_url, job.model ?? undefined, {
+      const { source_type, transcript, meta } = await transcribeFromUrl(job.source_url, model, {
         onStage: (stage) => setJobStage(job.id, stage),
         onDownloadProgress: (progress) => setJobStage(job.id, 'downloading', progress),
       });
@@ -91,18 +100,16 @@ async function processJob(job: { id: number; source_url: string; model: string |
         owner_name: meta.ownerName,
         duration: meta.duration,
         transcript,
+        model,
       });
       markJobDone(job.id, transcriptionId);
-      log.info({ chars: transcript.length, model, attempt }, 'job done');
+      log.info({ chars: transcript.length, model }, 'job done');
       return;
     } catch (err) {
-      if (attempt < MAX_ATTEMPTS && isRetryable(err)) {
-        const waitMs = RETRY_BASE_MS * 2 ** (attempt - 1);
-        log.warn({ attempt, waitMs, err: errMessage(err) }, 'transient error, retrying');
-        await sleep(waitMs);
-        continue;
-      }
-      throw err;
+      if (!isRetryable(err)) throw err; // permanent — fail fast, no step down
+      lastErr = err;
+      tried.add(model);
+      log.warn({ model, err: errMessage(err) }, 'transient error, stepping down to next model');
     }
   }
 }
