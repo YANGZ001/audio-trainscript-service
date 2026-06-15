@@ -778,7 +778,6 @@
           <td class="col-dur">${formatDuration(row.duration)}</td>
           <td class="col-actions">
             <button class="btn btn-ghost btn-xs" data-action="copy-transcript" data-id="${row.id}">Copy transcript</button>
-            <button class="btn btn-ghost btn-xs" data-action="redo" data-url="${escapeHtml(row.source_url)}">Redo</button>
             <button class="btn btn-ghost btn-xs" data-action="delete" data-id="${row.id}" style="color:var(--error);border-color:var(--error)">Del</button>
           </td>
         </tr>`;
@@ -801,12 +800,6 @@
       }
     }
 
-    function redoTranscription(url) {
-      switchTab('url');
-      document.getElementById('url-input').value = url;
-      startTranscription();
-    }
-
     async function deleteHistoryRow(id, btn) {
       btn.disabled = true;
       try {
@@ -822,8 +815,7 @@
       const el = e.target.closest('[data-action]');
       if (!el) return;
       const action = el.dataset.action;
-      if (action === 'redo') redoTranscription(el.dataset.url);
-      else if (action === 'delete') deleteHistoryRow(Number(el.dataset.id), el);
+      if (action === 'delete') deleteHistoryRow(Number(el.dataset.id), el);
       else if (action === 'copy-transcript') {
         const text = transcriptCache.get(Number(el.dataset.id));
         if (!text) return;
