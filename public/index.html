@@ -334,6 +334,10 @@
     }
     .transcript-area:focus { border-color: var(--border2); }
     .transcript-area::placeholder { color: var(--muted); font-style: italic; }
+    .url-status { margin-top: 8px; min-height: 1em; font-size: 0.85rem; color: var(--muted); }
+    .url-status.error { color: var(--error); }
+    .url-status.success { color: var(--success); }
+    #queue-body td { color: var(--text); }
     .output-actions {
       display: flex;
       justify-content: space-between;
@@ -457,6 +461,7 @@
         <div id="panel-url">
           <label for="url-input">Video / Podcast URL</label>
           <input type="url" id="url-input" placeholder="Bilibili, Snipd, or 小宇宙 episode URL" />
+          <div id="url-status" class="url-status"></div>
         </div>
 
         <div id="panel-file" class="hidden">
@@ -474,21 +479,17 @@
         <div class="bottom-row">
           <div class="model-group">
             <label for="model-select">Model</label>
-            <select id="model-select">
-              <option value="gemini-flash-lite-latest" selected>gemini-flash-lite-latest</option>
-              <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
-              <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-              <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-            </select>
+            <!-- Options are populated from /api/models (config/rate-limits.json). -->
+            <select id="model-select"></select>
           </div>
           <button class="btn btn-primary" id="submit-btn" onclick="startTranscription()">Transcribe</button>
         </div>
       </div>
     </div>
 
-    <div class="panel panel-output">
+    <!-- Output panel is used only by the File Upload tab. URL transcriptions run
+         through the queue (below) and their results appear in History instead. -->
+    <div class="panel panel-output hidden" id="output-panel">
       <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="status-row">
         <div class="status-dot" id="status-dot"></div>
@@ -501,6 +502,13 @@
           <button class="btn btn-ghost" id="copy-btn" disabled onclick="copyTranscript()">Copy All</button>
         </div>
       </div>
+    </div>
+
+    <div class="history-section hidden" id="queue-section">
+      <div class="history-header">
+        <span class="history-title">Queue</span>
+      </div>
+      <div id="queue-body"></div>
     </div>
 
     <div class="history-section" id="history-section">
@@ -517,7 +525,6 @@
     let activeTab = 'url';
     let selectedFile = null;
     let abortController = null;
-    let lastTranscriptionWasUrl = false;
     const transcriptCache = new Map();
 
     function switchTab(tab) {
@@ -526,6 +533,8 @@
       document.getElementById('tab-file').classList.toggle('active', tab === 'file');
       document.getElementById('panel-url').classList.toggle('hidden', tab !== 'url');
       document.getElementById('panel-file').classList.toggle('hidden', tab !== 'file');
+      // The output panel belongs to the File Upload tab only; URL results go to the queue + History.
+      document.getElementById('output-panel').classList.toggle('hidden', tab !== 'file');
     }
 
     function onFileSelected(file) {
@@ -587,11 +596,59 @@
       return { events, remaining: remaining || '' };
     }
 
-    async function startTranscription() {
-      lastTranscriptionWasUrl = (activeTab === 'url');
+    function startTranscription() {
+      if (activeTab === 'url') return enqueueUrlJob();
+      return startUploadTranscription();
+    }
+
+    function setUrlStatus(text, type) {
+      const el = document.getElementById('url-status');
+      el.textContent = text || '';
+      el.className = 'url-status' + (type ? ' ' + type : '');
+    }
+
+    // URL transcriptions are submitted to the queue; progress shows in the queue
+    // panel and the result lands in History.
+    async function enqueueUrlJob() {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { setUrlStatus('please enter a url', 'error'); return; }
+      const model = document.getElementById('model-select').value;
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      setUrlStatus('queuing…');
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, model }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setUrlStatus(json.error || 'failed to queue (http ' + res.status + ')', 'error');
+          return;
+        }
+        setUrlStatus('queued ✓', 'success');
+        document.getElementById('url-input').value = '';
+        startQueuePolling();
+        pollJobs();
+      } catch (err) {
+        setUrlStatus('network error: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // File uploads stay synchronous (not queued, not persisted to History) and
+    // stream their result into the output panel.
+    async function startUploadTranscription() {
       if (abortController) abortController.abort();
       abortController = new AbortController();
       const myController = abortController;
+
+      if (!selectedFile) {
+        setStatus('please select a .m4a file', 'error');
+        return;
+      }
 
       document.getElementById('transcript').value = '';
       document.getElementById('copy-btn').disabled = true;
@@ -602,35 +659,14 @@
 
       const model = document.getElementById('model-select').value;
       let response;
-
       try {
-        if (activeTab === 'url') {
-          const url = document.getElementById('url-input').value.trim();
-          if (!url) {
-            setStatus('please enter a url', 'error');
-            setRunning(false);
-            return;
-          }
-          response = await fetch('/api/transcribe?model=' + encodeURIComponent(model), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
-            signal: abortController.signal,
-          });
-        } else {
-          if (!selectedFile) {
-            setStatus('please select a .m4a file', 'error');
-            setRunning(false);
-            return;
-          }
-          const formData = new FormData();
-          formData.append('file', selectedFile);
-          response = await fetch('/api/upload-transcribe?model=' + encodeURIComponent(model), {
-            method: 'POST',
-            body: formData,
-            signal: abortController.signal,
-          });
-        }
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        response = await fetch('/api/upload-transcribe?model=' + encodeURIComponent(model), {
+          method: 'POST',
+          body: formData,
+          signal: abortController.signal,
+        });
       } catch (err) {
         if (err.name !== 'AbortError') setStatus('network error: ' + err.message, 'error');
         setRunning(false);
@@ -683,7 +719,6 @@
         document.getElementById('copy-btn').disabled = false;
         document.getElementById('char-count').textContent = text.length.toLocaleString() + ' chars';
         setStatus('done', 'success');
-        if (lastTranscriptionWasUrl) loadHistory();
       } else if (name === 'error') {
         setStatus(payload?.error || 'unknown error', 'error');
       }
@@ -815,7 +850,123 @@
       }
     });
 
+    // ---- Queue panel (URL jobs) ----
+    let knownJobStatuses = new Map();
+    let queuePollTimer = null;
+
+    function jobStateText(j) {
+      if (j.status === 'queued') return 'Queued';
+      if (j.status === 'failed') return 'Failed: ' + (j.error || 'error');
+      if (j.stage === 'downloading') return 'Downloading ' + (j.progress ?? 0) + '%';
+      if (j.stage === 'uploading') return 'Uploading…';
+      if (j.stage === 'transcribing') return 'Transcribing…';
+      return 'Processing…';
+    }
+
+    function renderQueue(jobs) {
+      const active = jobs.filter(j => j.status === 'queued' || j.status === 'processing' || j.status === 'failed');
+      const section = document.getElementById('queue-section');
+      const body = document.getElementById('queue-body');
+      if (!active.length) { section.classList.add('hidden'); body.innerHTML = ''; return; }
+      section.classList.remove('hidden');
+      const rowsHtml = active.map(j => {
+        let actions = '';
+        if (j.status === 'queued') {
+          actions = `<button class="btn btn-ghost btn-xs" data-action="cancel-job" data-id="${j.id}">Cancel</button>`;
+        } else if (j.status === 'failed') {
+          actions = `<button class="btn btn-ghost btn-xs" data-action="retry-job" data-id="${j.id}" data-url="${escapeHtml(j.source_url)}" data-model="${escapeHtml(j.model || '')}">Retry</button>
+            <button class="btn btn-ghost btn-xs" data-action="dismiss-job" data-id="${j.id}">Dismiss</button>`;
+        }
+        const stateStyle = j.status === 'failed' ? ' style="color:var(--error)"' : '';
+        return `<tr>
+          <td class="col-source"><a href="${escapeHtml(j.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(j.source_type)}</a></td>
+          <td${stateStyle}>${escapeHtml(jobStateText(j))}</td>
+          <td class="col-actions">${actions}</td>
+        </tr>`;
+      }).join('');
+      body.innerHTML = `<table class="history-table">
+        <thead><tr><th>Source</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`;
+    }
+
+    async function pollJobs() {
+      let jobs;
+      try {
+        const res = await fetch('/api/jobs');
+        if (!res.ok) return;
+        jobs = await res.json();
+      } catch { return; }
+
+      // Completed jobs drop off the list (done jobs aren't returned); when a job
+      // we knew as active disappears, a transcript likely landed in History.
+      const currentIds = new Set(jobs.map(j => j.id));
+      let activeVanished = false;
+      for (const [id, status] of knownJobStatuses) {
+        if (!currentIds.has(id) && (status === 'queued' || status === 'processing')) activeVanished = true;
+      }
+      knownJobStatuses = new Map(jobs.map(j => [j.id, j.status]));
+      if (activeVanished) loadHistory();
+
+      renderQueue(jobs);
+
+      // Stop polling once nothing is in flight; re-armed on the next enqueue.
+      const anyActive = jobs.some(j => j.status === 'queued' || j.status === 'processing');
+      if (!anyActive && queuePollTimer) { clearInterval(queuePollTimer); queuePollTimer = null; }
+    }
+
+    function startQueuePolling() {
+      if (queuePollTimer) return;
+      queuePollTimer = setInterval(pollJobs, 2000);
+    }
+
+    document.getElementById('queue-body').addEventListener('click', async (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+      const action = el.dataset.action;
+      el.disabled = true;
+      try {
+        if (action === 'cancel-job' || action === 'dismiss-job') {
+          await fetch('/api/jobs/' + Number(el.dataset.id), { method: 'DELETE' });
+        } else if (action === 'retry-job') {
+          const body = { url: el.dataset.url };
+          if (el.dataset.model) body.model = el.dataset.model;
+          await fetch('/api/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          await fetch('/api/jobs/' + Number(el.dataset.id), { method: 'DELETE' });
+          startQueuePolling();
+        }
+      } catch {}
+      pollJobs();
+    });
+
+    // Populate the model picker from the server config; first entry is the default.
+    async function loadModels() {
+      try {
+        const res = await fetch('/api/models');
+        if (!res.ok) return;
+        const { models } = await res.json();
+        const select = document.getElementById('model-select');
+        select.innerHTML = '';
+        (models || []).forEach((m, i) => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          if (i === 0) opt.selected = true;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn('loadModels failed', err);
+      }
+    }
+
+    loadModels();
     loadHistory();
+    startQueuePolling();
+    pollJobs();
   </script>
 </body>
 </html>

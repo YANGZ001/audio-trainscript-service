@@ -9,6 +9,7 @@ services:
       - SNIPD_API_KEY=${SNIPD_API_KEY}
       - PORT=${PORT:-3001}
       - DB_PATH=/data/db/transcriptions.db
+      - RATE_LIMITS_PATH=${RATE_LIMITS_PATH:-/app/config/rate-limits.json}
     volumes:
       - bilibili-audio-cache:/data/bilibili-audio
       - snipd-audio-cache:/data/snipd-audio

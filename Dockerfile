@@ -17,6 +17,7 @@ COPY package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY public/ ./public/
+COPY config/ ./config/
 RUN mkdir -p /data/bilibili-audio /data/snipd-audio /data/xiaoyuzhou-audio /data/db && chown app:app /data/bilibili-audio /data/snipd-audio /data/xiaoyuzhou-audio /data/db
 EXPOSE 3001
 USER app
