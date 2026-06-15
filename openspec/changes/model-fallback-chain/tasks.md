@@ -3,6 +3,7 @@
 - [x] 1.1 Add an ordered `fallback` array to `config/rate-limits.json` (e.g. `["gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]`)
 - [x] 1.2 Add `getFallbackChain(): string[]` (falls back to the Gemini default if missing/empty) to `rateLimits.ts`; `hasQuota(model)` lives in the worker where the time windows + `countApiCalls` already are
 - [x] 1.3 Document the `fallback` chain in `README.md`
+- [x] 1.4 Validate the chain at load: drop entries with no `models` config (warn), so a typo degrades gracefully instead of failing every job (a 4xx from an unknown model is non-retryable)
 
 ## 2. Data layer (`src/db.ts`)
 
@@ -32,6 +33,7 @@
 - [~] 5.4 Entire chain capped → waits (logic verified by `waitForSoonest`; not force-tested since it requires capping all four models)
 - [x] 5.5 `/api/transcribe` SSE contract unchanged; `?model` ignored
 - [x] 5.6 `GET /api/models` removed (404); no picker references remain in the served HTML
+- [x] 5.7 Bad chain entry (`typo-model-xyz` via `RATE_LIMITS_PATH`) → dropped with a warning, chain resolves to remaining valid models; all-unknown chain → falls back to the default Gemini model
 
 ## Acceptance criteria
 

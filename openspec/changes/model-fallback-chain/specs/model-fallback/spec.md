@@ -14,6 +14,20 @@ The system SHALL read an ordered fallback chain of model IDs from the rate-limit
 - **WHEN** every chain model has available quota
 - **THEN** the worker uses the first model in the chain
 
+### Requirement: Validate the chain at load
+
+When the rate-limit config is loaded, the system SHALL drop any fallback chain entry that has no corresponding `models` definition (logging a warning naming the dropped entries). If the chain becomes empty, the system SHALL fall back to the default Gemini model so a misconfigured chain degrades gracefully rather than failing every job.
+
+#### Scenario: Unknown chain entry dropped
+
+- **WHEN** the `fallback` chain contains a model ID with no matching `models` entry
+- **THEN** that entry is dropped with a warning and the remaining valid entries form the chain
+
+#### Scenario: Chain empty after validation
+
+- **WHEN** every `fallback` entry is unknown and all are dropped
+- **THEN** the chain falls back to the default Gemini model
+
 ### Requirement: Skip an exhausted model without waiting
 
 Before dispatching, the worker SHALL skip any chain model whose RPM or RPD is already exhausted and advance to the next chain model that has available quota, without waiting.

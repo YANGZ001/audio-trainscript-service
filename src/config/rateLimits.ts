@@ -32,6 +32,17 @@ function load(): RateLimitConfig {
     logger.warn({ err, path: CONFIG_PATH }, 'rate-limits config unreadable, using fallback');
     cached = FALLBACK;
   }
+  // Drop chain entries with no `models` config: an unknown model ID returns a
+  // non-retryable 4xx, which would fail every job (the chain is walked for all
+  // of them). Validate once at load so a typo degrades instead of breaking.
+  if (cached.fallback) {
+    const known = cached.fallback.filter((m) => m in cached!.models);
+    const dropped = cached.fallback.filter((m) => !(m in cached!.models));
+    if (dropped.length > 0) {
+      logger.warn({ dropped }, 'fallback chain has unknown models (no config.models entry), dropping them');
+    }
+    cached.fallback = known;
+  }
   return cached;
 }
 
