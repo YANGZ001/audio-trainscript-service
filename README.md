@@ -139,6 +139,10 @@ flowchart LR
 * **Xiaoyuzhou Episode Page + CDN** (`xiaoyuzhoufm.com` / `xyzcdn.net`): The public episode page embeds full episode JSON in a `__NEXT_DATA__` block; the CDN serves M4A audio publicly. No authentication required.
 * **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) utilizing models such as `gemini-2.5-flash-lite`.
 
+### Rate limits
+
+URL transcriptions run through an asynchronous queue drained by a single worker, which is the only component that calls Gemini. Per-model requests-per-minute (RPM) and requests-per-day (RPD) limits are read from [`config/rate-limits.json`](./config/rate-limits.json) — edit `default` and per-model `models` entries to match your Gemini quota. Override the path with `RATE_LIMITS_PATH` if needed.
+
 ---
 
 ## Detailed Usage Instructions

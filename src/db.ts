@@ -14,12 +14,42 @@ export interface TranscriptionRow {
   created_at: string;
 }
 
+export type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
+export type JobStage = 'downloading' | 'uploading' | 'transcribing';
+
+export interface JobRow {
+  id: number;
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_url: string;
+  model: string | null;
+  status: JobStatus;
+  stage: JobStage | null;
+  progress: number | null;
+  error: string | null;
+  transcription_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const g = globalThis as typeof globalThis & {
   __db?: Database.Database;
   __dbStmts?: {
     insert: Database.Statement;
     list: Database.Statement;
     delete: Database.Statement;
+    getTranscription: Database.Statement;
+    enqueueJob: Database.Statement;
+    claimNextJob: Database.Statement;
+    setJobStage: Database.Statement;
+    markJobDone: Database.Statement;
+    markJobFailed: Database.Statement;
+    listJobs: Database.Statement;
+    getJob: Database.Statement;
+    requeueProcessingJobs: Database.Statement;
+    cancelJob: Database.Statement;
+    logApiCall: Database.Statement;
+    countApiCalls: Database.Statement;
+    pruneApiCalls: Database.Statement;
   };
 };
 
@@ -33,7 +63,27 @@ const SCHEMA = `
     duration    INTEGER,
     transcript  TEXT    NOT NULL,
     created_at  TEXT    NOT NULL
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS jobs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type      TEXT    NOT NULL,
+    source_url       TEXT    NOT NULL,
+    model            TEXT,
+    status           TEXT    NOT NULL,
+    stage            TEXT,
+    progress         INTEGER,
+    error            TEXT,
+    transcription_id INTEGER,
+    created_at       TEXT    NOT NULL,
+    updated_at       TEXT    NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS api_calls (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    model TEXT NOT NULL,
+    ts    TEXT NOT NULL
+  );
 `;
 
 const MIGRATIONS: string[] = [
@@ -69,6 +119,34 @@ function getStmts() {
       ),
       list: db.prepare('SELECT * FROM transcriptions ORDER BY created_at DESC'),
       delete: db.prepare('DELETE FROM transcriptions WHERE id = ?'),
+      getTranscription: db.prepare('SELECT * FROM transcriptions WHERE id = ?'),
+      enqueueJob: db.prepare(
+        `INSERT INTO jobs (source_type, source_url, model, status, created_at, updated_at)
+         VALUES (?, ?, ?, 'queued', ?, ?)`
+      ),
+      claimNextJob: db.prepare(
+        `UPDATE jobs SET status = 'processing', updated_at = ?
+         WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1)
+         RETURNING *`
+      ),
+      setJobStage: db.prepare(
+        'UPDATE jobs SET stage = ?, progress = ?, updated_at = ? WHERE id = ?'
+      ),
+      markJobDone: db.prepare(
+        `UPDATE jobs SET status = 'done', stage = NULL, transcription_id = ?, updated_at = ? WHERE id = ?`
+      ),
+      markJobFailed: db.prepare(
+        `UPDATE jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`
+      ),
+      listJobs: db.prepare('SELECT * FROM jobs ORDER BY created_at DESC'),
+      getJob: db.prepare('SELECT * FROM jobs WHERE id = ?'),
+      requeueProcessingJobs: db.prepare(
+        `UPDATE jobs SET status = 'queued', stage = NULL, progress = NULL, updated_at = ? WHERE status = 'processing'`
+      ),
+      cancelJob: db.prepare(`DELETE FROM jobs WHERE id = ? AND status IN ('queued', 'failed')`),
+      logApiCall: db.prepare('INSERT INTO api_calls (model, ts) VALUES (?, ?)'),
+      countApiCalls: db.prepare('SELECT COUNT(*) AS n FROM api_calls WHERE model = ? AND ts > ?'),
+      pruneApiCalls: db.prepare('DELETE FROM api_calls WHERE ts < ?'),
     };
   }
   return g.__dbStmts;
@@ -100,4 +178,70 @@ export function listTranscriptions(): TranscriptionRow[] {
 
 export function deleteTranscription(id: number): void {
   getStmts().delete.run(id);
+}
+
+export function getTranscription(id: number): TranscriptionRow | undefined {
+  return getStmts().getTranscription.get(id) as TranscriptionRow | undefined;
+}
+
+export function enqueueJob(params: {
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_url: string;
+  model?: string;
+}): number {
+  const now = new Date().toISOString();
+  const result = getStmts().enqueueJob.run(
+    params.source_type,
+    params.source_url,
+    params.model ?? null,
+    now,
+    now,
+  );
+  return result.lastInsertRowid as number;
+}
+
+export function claimNextJob(): JobRow | undefined {
+  return getStmts().claimNextJob.get(new Date().toISOString()) as JobRow | undefined;
+}
+
+export function setJobStage(id: number, stage: JobStage, progress?: number): void {
+  getStmts().setJobStage.run(stage, progress ?? null, new Date().toISOString(), id);
+}
+
+export function markJobDone(id: number, transcriptionId: number): void {
+  getStmts().markJobDone.run(transcriptionId, new Date().toISOString(), id);
+}
+
+export function markJobFailed(id: number, error: string): void {
+  getStmts().markJobFailed.run(error, new Date().toISOString(), id);
+}
+
+export function listJobs(): JobRow[] {
+  return getStmts().listJobs.all() as JobRow[];
+}
+
+export function getJob(id: number): JobRow | undefined {
+  return getStmts().getJob.get(id) as JobRow | undefined;
+}
+
+// Jobs left in 'processing' when the process stopped are orphaned (the single
+// worker is the only thing that processes them). Reset them to 'queued' at boot.
+export function requeueProcessingJobs(): number {
+  return getStmts().requeueProcessingJobs.run(new Date().toISOString()).changes;
+}
+
+export function cancelJob(id: number): boolean {
+  return getStmts().cancelJob.run(id).changes > 0;
+}
+
+export function logApiCall(model: string): void {
+  getStmts().logApiCall.run(model, new Date().toISOString());
+  // Opportunistically drop ledger rows older than 24h to keep the table small.
+  getStmts().pruneApiCalls.run(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+}
+
+export function countApiCalls(model: string, sinceMs: number): number {
+  const since = new Date(Date.now() - sinceMs).toISOString();
+  const row = getStmts().countApiCalls.get(model, since) as { n: number };
+  return row.n;
 }

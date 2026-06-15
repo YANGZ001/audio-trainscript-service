@@ -5,11 +5,19 @@ import logger from './logger';
 import multer from 'multer';
 import * as os from 'os';
 import * as path from 'path';
-import { downloadBilibiliAudio, extractBvid, getVideoMetadata, resolveShortUrl } from './services/bilibili';
-import { downloadSnipdAudio, extractSnipdEpisodeId, fetchSnipdEpisodeData } from './services/snipd';
-import { downloadXiaoyuzhouAudio, extractXiaoyuzhouEpisodeId, fetchXiaoyuzhouEpisodeData } from './services/xiaoyuzhou';
-import { cleanupOrphanedGeminiFiles, transcribeAudio, TranscriptMeta } from './services/gemini';
-import { insertTranscription, listTranscriptions, deleteTranscription } from './db';
+import { cleanupOrphanedGeminiFiles, transcribeAudio } from './services/gemini';
+import { detectSource } from './services/transcribePipeline';
+import { listModels } from './config/rateLimits';
+import { startWorker } from './queue/worker';
+import {
+  listTranscriptions,
+  deleteTranscription,
+  getTranscription,
+  enqueueJob,
+  listJobs,
+  cancelJob,
+  getJob,
+} from './db';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
@@ -39,51 +47,80 @@ function runMiddleware(req: Request, res: Response, fn: Function): Promise<void>
 
 const PORT = Number(process.env.PORT ?? 3000);
 
-const BILIBILI_AUDIO_CACHE_DIR = '/data/bilibili-audio';
-const SNIPD_AUDIO_CACHE_DIR = '/data/snipd-audio';
-const XIAOYUZHOU_AUDIO_CACHE_DIR = '/data/xiaoyuzhou-audio';
-const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-
-function detectSource(url: string): 'bilibili' | 'snipd' | 'xiaoyuzhou' {
-  if (/bilibili\.com|b23\.tv/i.test(url)) return 'bilibili';
-  if (/share\.snipd\.com\/episode\//i.test(url)) return 'snipd';
-  if (/xiaoyuzhoufm\.com\/episode\//i.test(url)) return 'xiaoyuzhou';
-  throw new Error('Unsupported URL — must be a Bilibili, Snipd, or Xiaoyuzhou episode URL');
-}
-
-function isCacheHit(cachePath: string): boolean {
-  try {
-    const { mtimeMs } = fs.statSync(cachePath);
-    return Date.now() - mtimeMs < CACHE_TTL_MS;
-  } catch {
-    return false;
-  }
-}
-
-function readCachedMeta(metaPath: string): TranscriptMeta | null {
-  try {
-    return JSON.parse(fs.readFileSync(metaPath, 'utf8')) as TranscriptMeta;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedMeta(metaPath: string, meta: TranscriptMeta): void {
-  try {
-    fs.writeFileSync(metaPath, JSON.stringify(meta));
-  } catch (err) {
-    logger.warn({ err, metaPath }, 'failed to write metadata cache');
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 cleanupOrphanedGeminiFiles().catch((err) =>
   logger.error({ err }, 'Startup Gemini cleanup failed'),
 );
 
+startWorker();
+
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
+// The model picker is driven by the configured models so the UI and rate limits stay in sync.
+app.get('/api/models', (_req: Request, res: Response) => {
+  res.json({ models: listModels() });
+});
+
+app.post('/api/jobs', (req: Request, res: Response) => {
+  const { url, model } = req.body as { url?: string; model?: string };
+
+  if (typeof url !== 'string' || !url) {
+    res.status(400).json({ error: 'Request body must include a url string' });
+    return;
+  }
+
+  let source: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  try {
+    source = detectSource(url);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Unsupported URL' });
+    return;
+  }
+
+  const id = enqueueJob({
+    source_type: source,
+    source_url: url,
+    model: typeof model === 'string' && model.trim() ? model : undefined,
+  });
+  logger.child({ jobId: id }).info({ source }, 'job enqueued');
+  res.status(201).json({ id, status: 'queued' });
+});
+
+app.get('/api/jobs', (_req: Request, res: Response) => {
+  try {
+    res.json(listJobs());
+  } catch (err) {
+    logger.error({ err }, 'failed to list jobs');
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/jobs/:id', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  try {
+    if (!cancelJob(id)) {
+      res.status(409).json({ error: 'Only queued or failed jobs can be removed' });
+      return;
+    }
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, 'failed to cancel job');
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Backward-compatible synchronous SSE endpoint. Enqueues a (FIFO) job and tails
+// its progress, translating job state into the legacy event stream so existing
+// consumers (e.g. bilibili-copilot) need no changes.
 app.post('/api/transcribe', async (req: Request, res: Response) => {
   const { url } = req.body as { url?: string };
 
@@ -100,6 +137,11 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     return;
   }
 
+  const model = typeof req.query.model === 'string' && req.query.model.trim() ? req.query.model : undefined;
+  const jobId = enqueueJob({ source_type: source, source_url: url, model });
+  const log = logger.child({ jobId, tag: 'transcribe' });
+  log.info({ source }, 'transcribe request enqueued');
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -110,197 +152,47 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
   };
 
   // res 'close' fires when the socket drops mid-stream (real client disconnect).
-  // req 'close' fires as soon as the request body is consumed — too early for our purposes.
   let clientGone = false;
   res.on('close', () => {
     if (!res.writableFinished) clientGone = true;
   });
 
-  let requestTag = 'transcribe';
-  const t0 = Date.now();
-  const model = typeof req.query.model === 'string' ? req.query.model : undefined;
+  let lastStage: string | null = null;
+  let lastProgress: number | null = null;
 
   try {
-    if (source === 'bilibili') {
-      const canonicalUrl = await resolveShortUrl(url);
-      const bvid = extractBvid(canonicalUrl);
-      requestTag = bvid;
-      const log = logger.child({ bvid });
-      log.info('transcribe request received');
-
-      const audioPath = path.join(BILIBILI_AUDIO_CACHE_DIR, `${bvid}.m4a`);
-      const metaPath = path.join(BILIBILI_AUDIO_CACHE_DIR, `${bvid}.json`);
-
-      let meta: TranscriptMeta;
-
-      if (isCacheHit(audioPath)) {
-        const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        const now = new Date();
-        fs.utimesSync(audioPath, now, now);
-        const cachedMeta = readCachedMeta(metaPath);
-        if (cachedMeta) {
-          log.info({ mb: cacheMb }, 'audio cache hit');
-          meta = cachedMeta;
-        } else {
-          log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
-          const sessdata = process.env.BILIBILI_SESSION_TOKEN;
-          if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
-          const { ownerName, title, desc, tname, duration, dynamic } = await getVideoMetadata(bvid, sessdata);
-          meta = { ownerName, title, desc, tname, duration, dynamic };
-          writeCachedMeta(metaPath, meta);
-        }
-      } else {
-        const sessdata = process.env.BILIBILI_SESSION_TOKEN;
-        if (!sessdata) throw new Error('BILIBILI_SESSION_TOKEN is not set');
-        log.debug('fetching video metadata');
-        const { cid, ownerName, title, desc, tname, duration, dynamic } = await getVideoMetadata(bvid, sessdata);
-        log.debug({ cid }, 'metadata fetched');
-        meta = { ownerName, title, desc, tname, duration, dynamic };
-        fs.mkdirSync(BILIBILI_AUDIO_CACHE_DIR, { recursive: true });
-        await downloadBilibiliAudio(bvid, cid, audioPath, (progress) => {
-          if (!clientGone) sendEvent('downloading', { progress });
-        });
-        writeCachedMeta(metaPath, meta);
-        const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
-        const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
-      }
-
+    for (;;) {
+      // Client disconnected — stop tailing; the worker keeps processing in the background.
       if (clientGone) return;
-      sendEvent('uploading', {});
 
-      const transcript = await transcribeAudio(audioPath, () => {
-        if (!clientGone) sendEvent('transcribing', {});
-      }, model, bvid, meta);
-
-      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-      log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
-
-      if (!clientGone) sendEvent('done', { text: transcript });
-      try {
-        insertTranscription({ source_type: 'bilibili', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
-      } catch (dbErr) {
-        logger.child({ bvid }).warn({ err: dbErr }, 'failed to persist transcription');
+      const job = getJob(jobId);
+      if (!job) {
+        sendEvent('error', { error: 'Job not found' });
+        return;
       }
 
-    } else if (source === 'snipd') {
-      const episodeId = extractSnipdEpisodeId(url);
-      requestTag = episodeId;
-      const log = logger.child({ episodeId });
-      log.info('transcribe request received');
-
-      const audioPath = path.join(SNIPD_AUDIO_CACHE_DIR, `${episodeId}.mp3`);
-      const metaPath = path.join(SNIPD_AUDIO_CACHE_DIR, `${episodeId}.json`);
-
-      let meta: TranscriptMeta;
-
-      if (isCacheHit(audioPath)) {
-        const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        const now = new Date();
-        fs.utimesSync(audioPath, now, now);
-        const cachedMeta = readCachedMeta(metaPath);
-        if (cachedMeta) {
-          log.info({ mb: cacheMb }, 'audio cache hit');
-          meta = cachedMeta;
-        } else {
-          log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
-          const { meta: fetchedMeta } = await fetchSnipdEpisodeData(episodeId);
-          meta = fetchedMeta;
-          writeCachedMeta(metaPath, meta);
+      if (job.stage === 'downloading') {
+        if (job.progress !== lastProgress) {
+          sendEvent('downloading', { progress: job.progress ?? 0 });
+          lastProgress = job.progress;
         }
-      } else {
-        log.debug('fetching Snipd episode data');
-        const { audioUrl, meta: fetchedMeta } = await fetchSnipdEpisodeData(episodeId);
-        log.debug('episode data fetched');
-        meta = fetchedMeta;
-        fs.mkdirSync(SNIPD_AUDIO_CACHE_DIR, { recursive: true });
-        await downloadSnipdAudio(audioUrl, audioPath, (progress) => {
-          if (!clientGone) sendEvent('downloading', { progress });
-        });
-        writeCachedMeta(metaPath, meta);
-        const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
-        const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
+      } else if (job.stage && job.stage !== lastStage) {
+        sendEvent(job.stage, {});
+      }
+      if (job.stage) lastStage = job.stage;
+
+      if (job.status === 'done') {
+        const row = job.transcription_id != null ? getTranscription(job.transcription_id) : undefined;
+        sendEvent('done', { text: row?.transcript ?? '' });
+        return;
+      }
+      if (job.status === 'failed') {
+        sendEvent('error', { error: job.error ?? 'Transcription failed' });
+        return;
       }
 
-      if (clientGone) return;
-      sendEvent('uploading', {});
-
-      const transcript = await transcribeAudio(audioPath, () => {
-        if (!clientGone) sendEvent('transcribing', {});
-      }, model, episodeId, meta);
-
-      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-      log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
-
-      if (!clientGone) sendEvent('done', { text: transcript });
-      try {
-        insertTranscription({ source_type: 'snipd', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
-      } catch (dbErr) {
-        logger.child({ episodeId }).warn({ err: dbErr }, 'failed to persist transcription');
-      }
-
-    } else if (source === 'xiaoyuzhou') {
-      const episodeId = extractXiaoyuzhouEpisodeId(url);
-      requestTag = episodeId;
-      const log = logger.child({ episodeId });
-      log.info('transcribe request received');
-
-      const audioPath = path.join(XIAOYUZHOU_AUDIO_CACHE_DIR, `${episodeId}.m4a`);
-      const metaPath = path.join(XIAOYUZHOU_AUDIO_CACHE_DIR, `${episodeId}.json`);
-
-      let meta: TranscriptMeta;
-
-      if (isCacheHit(audioPath)) {
-        const cacheMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        const now = new Date();
-        fs.utimesSync(audioPath, now, now);
-        const cachedMeta = readCachedMeta(metaPath);
-        if (cachedMeta) {
-          log.info({ mb: cacheMb }, 'audio cache hit');
-          meta = cachedMeta;
-        } else {
-          log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
-          const { meta: fetchedMeta } = await fetchXiaoyuzhouEpisodeData(episodeId);
-          meta = fetchedMeta;
-          writeCachedMeta(metaPath, meta);
-        }
-      } else {
-        log.debug('fetching Xiaoyuzhou episode data');
-        const { audioUrl, meta: fetchedMeta } = await fetchXiaoyuzhouEpisodeData(episodeId);
-        log.debug('episode data fetched');
-        meta = fetchedMeta;
-        fs.mkdirSync(XIAOYUZHOU_AUDIO_CACHE_DIR, { recursive: true });
-        await downloadXiaoyuzhouAudio(audioUrl, audioPath, (progress) => {
-          if (!clientGone) sendEvent('downloading', { progress });
-        });
-        writeCachedMeta(metaPath, meta);
-        const downloadSec = ((Date.now() - t0) / 1000).toFixed(1);
-        const downloadMb = (fs.statSync(audioPath).size / (1024 * 1024)).toFixed(1);
-        log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
-      }
-
-      if (clientGone) return;
-      sendEvent('uploading', {});
-
-      const transcript = await transcribeAudio(audioPath, () => {
-        if (!clientGone) sendEvent('transcribing', {});
-      }, model, episodeId, meta);
-
-      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-      log.info({ chars: transcript.length, sec: totalSec, model: model ?? 'gemini-flash-lite-latest' }, 'transcription done');
-
-      if (!clientGone) sendEvent('done', { text: transcript });
-      try {
-        insertTranscription({ source_type: 'xiaoyuzhou', source_url: url, title: meta.title, owner_name: meta.ownerName, duration: meta.duration, transcript });
-      } catch (dbErr) {
-        logger.child({ episodeId }).warn({ err: dbErr }, 'failed to persist transcription');
-      }
+      await sleep(500);
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    logger.child({ tag: requestTag }).error({ err }, 'request error');
-    sendEvent('error', { error: message });
   } finally {
     res.end();
   }
