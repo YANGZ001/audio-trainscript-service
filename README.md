@@ -103,7 +103,7 @@ flowchart LR
 ## Component Overviews
 
 ### 1. Clients & Integration Layer
-* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili/Snipd/Xiaoyuzhou URL input and `.m4a` file upload (drag-and-drop). URL submissions are enqueued and tracked in a live **Queue** panel (per-job stage/progress, with cancel and retry); finished runs land in a persistent **History** table offering copy-transcript and delete actions. File uploads stream real-time SSE progress into an output panel with a one-click copy. Transcripts are timestamped plain text (`[MM:SS] Speaker: text`). No installation required — open `http://<host>:3001` in any browser.
+* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili/Snipd/Xiaoyuzhou URL input and `.m4a` file upload (drag-and-drop). URL submissions are enqueued and tracked in a live **Queue** panel (per-job stage/progress, with cancel and retry); finished runs land in a persistent **History** table offering copy-transcript and delete actions (the list loads metadata only — keeping it fast over slow links — and each transcript is fetched on demand when copied). File uploads stream real-time SSE progress into an output panel with a one-click copy. Transcripts are timestamped plain text (`[MM:SS] Speaker: text`). No installation required — open `http://<host>:3001` in any browser.
 * **React Web UI (`bilibili-copilot-web`)**: The downstream application that calls the service over a Tailscale connection and integrates transcription as a subtitle fallback.
 * **CLI Scripts**: Helper scripts included in the repository (`test.sh` for Bilibili URLs and `transcribe-file.sh` for local files) that make raw curl requests and format the Server-Sent Events output.
 * **cURL/REST API**: Direct HTTP API access for testing and integrations.
@@ -163,7 +163,8 @@ flowchart LR
 | `DELETE` | `/api/jobs/:id`             | Cancel a queued job or dismiss a failed one. |
 | `POST`   | `/api/transcribe`           | Backward-compatible SSE endpoint — enqueues a URL job and tails its progress as SSE. |
 | `POST`   | `/api/upload-transcribe`    | Transcribe an uploaded `.m4a` synchronously over SSE (not queued, not persisted). |
-| `GET`    | `/api/transcriptions`       | List completed transcriptions (the History table). |
+| `GET`    | `/api/transcriptions`       | List completed transcriptions for the History table — metadata only, transcript bodies excluded. |
+| `GET`    | `/api/transcriptions/:id`   | Fetch a single transcription's transcript (`{ transcript }`); used on demand by the History "Copy transcript" action. |
 | `DELETE` | `/api/transcriptions/:id`   | Delete a completed transcription. |
 
 SSE events emitted by the streaming endpoints: `downloading` (with `progress`), `uploading`, `transcribing`, `done` (with `text`), and `error`.

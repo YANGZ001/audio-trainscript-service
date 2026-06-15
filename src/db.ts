@@ -15,6 +15,8 @@ export interface TranscriptionRow {
   created_at: string;
 }
 
+export type TranscriptionMeta = Omit<TranscriptionRow, 'transcript'>;
+
 export type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
 export type JobStage = 'downloading' | 'uploading' | 'transcribing';
 
@@ -123,7 +125,10 @@ function getStmts() {
         `INSERT INTO transcriptions (source_type, source_url, title, owner_name, duration, transcript, model, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ),
-      list: db.prepare('SELECT * FROM transcriptions ORDER BY created_at DESC'),
+      list: db.prepare(
+        `SELECT id, source_type, source_url, title, owner_name, duration, model, created_at
+         FROM transcriptions ORDER BY created_at DESC`
+      ),
       delete: db.prepare('DELETE FROM transcriptions WHERE id = ?'),
       getTranscription: db.prepare('SELECT * FROM transcriptions WHERE id = ?'),
       enqueueJob: db.prepare(
@@ -181,8 +186,8 @@ export function insertTranscription(params: {
   return result.lastInsertRowid as number;
 }
 
-export function listTranscriptions(): TranscriptionRow[] {
-  return getStmts().list.all() as TranscriptionRow[];
+export function listTranscriptions(): TranscriptionMeta[] {
+  return getStmts().list.all() as TranscriptionMeta[];
 }
 
 export function deleteTranscription(id: number): void {
