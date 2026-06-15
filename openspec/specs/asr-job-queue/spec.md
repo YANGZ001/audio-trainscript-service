@@ -5,22 +5,15 @@
 Defines the asynchronous transcription job queue. URL transcriptions (Bilibili, Snipd, Xiaoyuzhou) are submitted to a persistent, SQLite-backed queue and drained by a single in-process worker in strict FIFO order — the only component that calls the transcription provider for queued jobs. Clients submit via `POST /api/jobs` and poll `GET /api/jobs`; completed transcripts appear in History. The legacy `POST /api/transcribe` SSE endpoint is preserved as a backward-compatible wrapper that enqueues a job and tails its progress.
 
 ---
-
 ## Requirements
-
 ### Requirement: Enqueue a transcription job
 
-The system SHALL accept a transcription request for a supported URL source (Bilibili, Snipd, Xiaoyuzhou) via `POST /api/jobs` and persist it as a job, returning immediately without waiting for transcription.
+The system SHALL accept a transcription request for a supported URL source (Bilibili, Snipd, Xiaoyuzhou) via `POST /api/jobs` and persist it as a job, returning immediately without waiting for transcription. The request body SHALL contain only `{ "url": "..." }`; there is no per-job model selection.
 
 #### Scenario: Valid URL enqueued
 
 - **WHEN** a client sends `POST /api/jobs` with a body `{ "url": "<supported-url>" }`
 - **THEN** the system persists a job with status `queued` and responds `201` with `{ "id": <number>, "status": "queued" }` before any download or transcription begins
-
-#### Scenario: Optional model override
-
-- **WHEN** the request body includes a `model` field
-- **THEN** the job is persisted with that model and the worker uses it when transcribing
 
 #### Scenario: Missing or invalid URL
 
@@ -67,12 +60,12 @@ The system SHALL allow removing a `queued` job (cancel) or a `failed` job (dismi
 
 ### Requirement: Retry a failed job
 
-The system SHALL allow the user to retry a `failed` job by re-enqueuing a new job with the same source URL and model.
+The system SHALL allow the user to retry a `failed` job by re-enqueuing a new job with the same source URL.
 
 #### Scenario: Retry re-enqueues the work
 
 - **WHEN** the user retries a failed job
-- **THEN** a new `queued` job is created with the original job's URL and model, and the original failed job is removed from the listing
+- **THEN** a new `queued` job is created with the original job's URL, and the original failed job is removed from the listing
 
 ### Requirement: FIFO single-worker processing
 
@@ -139,3 +132,4 @@ Jobs SHALL be persisted durably so that the queue and job history survive a serv
 
 - **WHEN** the service restarts while a job is `processing` (interrupted mid-run)
 - **THEN** the worker resets that orphaned job back to `queued` at startup so it is processed again rather than being stuck forever
+
