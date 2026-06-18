@@ -40,7 +40,7 @@ function buildPrompt(meta?: TranscriptMeta): string {
     `3. Mark unintelligible audio as [inaudible]. Mark low-confidence words as [unclear: word?].\n` +
     `4. The primary speaker is ${primarySpeaker}. Label each speaker by name or role if identifiable; otherwise use Speaker A, Speaker B.\n` +
     `5. If the recording contains technical terminology, proofread it against context for correctness.\n` +
-    `6. Prepend a timestamp to each speaker turn in [MM:SS] format.`
+    `6. Format each speaker turn on its own line as: [MM:SS] SpeakerName: spoken text. Each new speaker turn must start on a new line.`
   );
 }
 
