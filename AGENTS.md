@@ -1,3 +1,22 @@
+# audio-trainscript-service — Project Notes
+
+<!--
+  Project-specific rules. This block sits ABOVE the agent-guidelines markers on
+  purpose: scripts/update_guidelines.sh (from the agent-guidelines repo)
+  regenerates everything between the BEGIN/END markers below and would clobber
+  edits made there. Add durable, repo-specific conventions here instead.
+-->
+
+## Runtime & State
+
+- The service listens on **port 3001** (host port 3000 is occupied). Test against `http://localhost:3001`, not 3000.
+- `/data` (the three audio caches + the SQLite DB) is backed by **named Docker volumes** and persists across `docker compose down` and `up --build`. Rebuilding does **not** reset DB rows or cached audio — tests that assume a clean slate must account for pre-existing state.
+
+## Database migrations
+
+- Schema changes go in the `MIGRATIONS` array in `src/db.ts`: additive, idempotent, each statement wrapped in try/catch and run on every boot.
+- On a volume that already has a column/index, the re-run `ALTER TABLE`/`CREATE` throws (e.g. `duplicate column name: model`) and is logged at startup as `db migration skipped`. **This is expected and harmless** — do not "fix" it. A genuine failure would be the upsert/insert path erroring at request time, not these boot warnings.
+
 <!-- BEGIN agent-guidelines -->
 # Common Agent Rules
 
