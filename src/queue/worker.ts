@@ -2,6 +2,7 @@ import logger from '../logger';
 import {
   claimNextJob,
   setJobStage,
+  setJobTitle,
   markJobDone,
   markJobFailed,
   insertTranscription,
@@ -91,6 +92,7 @@ async function processJob(job: { id: number; source_url: string }): Promise<void
       const { source_type, content_id, transcript, meta } = await transcribeFromUrl(job.source_url, model, {
         onStage: (stage) => setJobStage(job.id, stage),
         onDownloadProgress: (progress) => setJobStage(job.id, 'downloading', progress),
+        onTitle: (title) => setJobTitle(job.id, title),
       });
 
       const transcriptionId = insertTranscription({
