@@ -172,7 +172,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
 
       if (job.status === 'done') {
         const row = job.transcription_id != null ? getTranscription(job.transcription_id) : undefined;
-        sendEvent('done', { text: row?.transcript ?? '' });
+        sendEvent('done', { text: row?.transcript ?? '', title: row?.title ?? null });
         return;
       }
       if (job.status === 'failed') {
