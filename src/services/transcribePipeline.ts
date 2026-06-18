@@ -75,6 +75,9 @@ async function prepareBilibili(url: string, cb: TranscribeCallbacks): Promise<Pr
     const cachedMeta = readCachedMeta(metaPath);
     if (cachedMeta) {
       log.info({ mb: cacheMb }, 'audio cache hit');
+      // Keep the sidecar's mtime in lockstep with the audio so the cache sweep
+      // never deletes metadata out from under a still-fresh audio file.
+      fs.utimesSync(metaPath, now, now);
       meta = cachedMeta;
     } else {
       log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
@@ -120,6 +123,9 @@ async function prepareSnipd(url: string, cb: TranscribeCallbacks): Promise<Prepa
     const cachedMeta = readCachedMeta(metaPath);
     if (cachedMeta) {
       log.info({ mb: cacheMb }, 'audio cache hit');
+      // Keep the sidecar's mtime in lockstep with the audio so the cache sweep
+      // never deletes metadata out from under a still-fresh audio file.
+      fs.utimesSync(metaPath, now, now);
       meta = cachedMeta;
     } else {
       log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
@@ -161,6 +167,9 @@ async function prepareXiaoyuzhou(url: string, cb: TranscribeCallbacks): Promise<
     const cachedMeta = readCachedMeta(metaPath);
     if (cachedMeta) {
       log.info({ mb: cacheMb }, 'audio cache hit');
+      // Keep the sidecar's mtime in lockstep with the audio so the cache sweep
+      // never deletes metadata out from under a still-fresh audio file.
+      fs.utimesSync(metaPath, now, now);
       meta = cachedMeta;
     } else {
       log.info({ mb: cacheMb }, 'audio cache hit (meta missing)');
