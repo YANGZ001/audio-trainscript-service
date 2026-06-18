@@ -6,6 +6,7 @@ import logger from './logger';
 export interface TranscriptionRow {
   id: number;
   source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  content_id: string | null;
   source_url: string;
   title: string | null;
   owner_name: string | null;
@@ -93,6 +94,13 @@ const SCHEMA = `
 const MIGRATIONS: string[] = [
   // Records which fallback-chain model produced each transcript.
   `ALTER TABLE transcriptions ADD COLUMN model TEXT`,
+  // Stable per-source content id (bvid / episode id), so history dedups by
+  // content rather than by raw URL form. Legacy rows stay NULL.
+  `ALTER TABLE transcriptions ADD COLUMN content_id TEXT`,
+  // One row per content; SQLite treats NULLs as distinct, so legacy rows are
+  // unaffected and only new (non-NULL) content_ids dedup via upsert.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_transcriptions_source_content
+     ON transcriptions(source_type, content_id)`,
 ];
 
 function getDb(): Database.Database {
@@ -122,8 +130,17 @@ function getStmts() {
     const db = getDb();
     g.__dbStmts = {
       insert: db.prepare(
-        `INSERT INTO transcriptions (source_type, source_url, title, owner_name, duration, transcript, model, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO transcriptions (source_type, content_id, source_url, title, owner_name, duration, transcript, model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(source_type, content_id) DO UPDATE SET
+           source_url = excluded.source_url,
+           title      = excluded.title,
+           owner_name = excluded.owner_name,
+           duration   = excluded.duration,
+           transcript = excluded.transcript,
+           model      = excluded.model,
+           created_at = excluded.created_at
+         RETURNING id`
       ),
       list: db.prepare(
         `SELECT id, source_type, source_url, title, owner_name, duration, model, created_at
@@ -166,6 +183,7 @@ function getStmts() {
 
 export function insertTranscription(params: {
   source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  content_id: string;
   source_url: string;
   title?: string;
   owner_name?: string;
@@ -173,8 +191,12 @@ export function insertTranscription(params: {
   transcript: string;
   model?: string;
 }): number {
-  const result = getStmts().insert.run(
+  // Upsert by (source_type, content_id), so a repeat transcription replaces the
+  // existing row. RETURNING id is used because lastInsertRowid is stale when the
+  // ON CONFLICT clause updates rather than inserts.
+  const row = getStmts().insert.get(
     params.source_type,
+    params.content_id,
     params.source_url,
     params.title ?? null,
     params.owner_name ?? null,
@@ -182,8 +204,8 @@ export function insertTranscription(params: {
     params.transcript,
     params.model ?? null,
     new Date().toISOString(),
-  );
-  return result.lastInsertRowid as number;
+  ) as { id: number };
+  return row.id;
 }
 
 export function listTranscriptions(): TranscriptionMeta[] {
