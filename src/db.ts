@@ -193,24 +193,27 @@ export function insertTranscription(params: {
   transcript: string;
   model?: string;
 }): number {
-  // Delete any stale row(s) for this exact URL first. The ON CONFLICT on
-  // (source_type, content_id) only deduplicates when both rows have a non-NULL
+  // Wrapped in a transaction so the delete + insert are atomic. The ON CONFLICT
+  // on (source_type, content_id) only deduplicates when both rows have a non-NULL
   // content_id — SQLite treats NULL != NULL, so old NULL-content_id rows
-  // accumulate otherwise. Deleting by URL is safe: if the same video reappears
-  // via a different URL, the content_id conflict clause handles that case.
-  getStmts().deleteByUrl.run(params.source_url);
-  const row = getStmts().insert.get(
-    params.source_type,
-    params.content_id,
-    params.source_url,
-    params.title ?? null,
-    params.owner_name ?? null,
-    params.duration ?? null,
-    params.transcript,
-    params.model ?? null,
-    new Date().toISOString(),
-  ) as { id: number };
-  return row.id;
+  // accumulate otherwise. Deleting by URL first is safe: if the same video
+  // reappears via a different URL, the content_id conflict clause handles it.
+  const stmts = getStmts();
+  const upsert = getDb().transaction(() => {
+    stmts.deleteByUrl.run(params.source_url);
+    return stmts.insert.get(
+      params.source_type,
+      params.content_id,
+      params.source_url,
+      params.title ?? null,
+      params.owner_name ?? null,
+      params.duration ?? null,
+      params.transcript,
+      params.model ?? null,
+      new Date().toISOString(),
+    ) as { id: number };
+  });
+  return upsert().id;
 }
 
 export function listTranscriptions(): TranscriptionMeta[] {
