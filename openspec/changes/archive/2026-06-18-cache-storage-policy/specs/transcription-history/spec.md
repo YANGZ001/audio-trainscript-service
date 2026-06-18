@@ -1,10 +1,5 @@
-# transcription-history Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Defines persistent transcription history. Completed URL transcriptions are stored in a SQLite database (WAL journal) and exposed through a list/delete API and a History UI with copy and delete actions. File uploads are not persisted. History survives service restarts.
-
-## Requirements
 ### Requirement: Transcription persistence
 The system SHALL automatically persist completed URL-based transcriptions (Bilibili, Snipd, and Xiaoyuzhou) to a SQLite database after each successful transcription, keyed by normalized content id. Persistence SHALL be an upsert on `(source_type, content_id)`: the first transcription of a given content inserts a row; a subsequent transcription of the same content SHALL replace that row's transcript, metadata, model, and `created_at` rather than insert a duplicate. The `content_id` is the stable identifier already derived during download (`bvid` for Bilibili, episode UUID for Snipd, 24-char episode id for Xiaoyuzhou), not the raw submitted URL. Uploaded `.m4a` transcriptions SHALL NOT be persisted.
 
@@ -39,48 +34,3 @@ The system SHALL automatically persist completed URL-based transcriptions (Bilib
 #### Scenario: Persistence survives container restart
 - **WHEN** the Docker container is stopped and restarted
 - **THEN** previously persisted transcriptions are still returned by `GET /api/transcriptions`
-
-### Requirement: List transcriptions API
-The system SHALL expose `GET /api/transcriptions` returning all persisted transcriptions ordered newest first.
-
-#### Scenario: Returns all rows newest first
-- **WHEN** `GET /api/transcriptions` is called
-- **THEN** the response is a JSON array of transcription objects ordered by `created_at` descending
-
-#### Scenario: Returns empty array when no transcriptions exist
-- **WHEN** `GET /api/transcriptions` is called with no rows in the database
-- **THEN** the response is an empty JSON array `[]` with HTTP 200
-
-### Requirement: Delete transcription API
-The system SHALL expose `DELETE /api/transcriptions/:id` to hard-delete a single row.
-
-#### Scenario: Delete existing row
-- **WHEN** `DELETE /api/transcriptions/5` is called for an existing row
-- **THEN** the row is removed from the database and HTTP 204 is returned
-
-#### Scenario: Delete with invalid id
-- **WHEN** `DELETE /api/transcriptions/abc` is called with a non-integer id
-- **THEN** HTTP 400 is returned with an error message
-
-### Requirement: History UI
-The system SHALL render a history table below the transcription form in `public/index.html`, visible to any user without authentication.
-
-#### Scenario: History table renders on page load
-- **WHEN** the page loads
-- **THEN** `GET /api/transcriptions` is fetched and a table of past transcriptions is displayed below the form, showing title, source type, date, and duration per row
-
-#### Scenario: History updates after new transcription
-- **WHEN** a URL-based transcription completes (SSE `done` received)
-- **THEN** the history table refreshes to include the new row without a full page reload
-
-#### Scenario: Empty history state
-- **WHEN** there are no persisted transcriptions
-- **THEN** the history section displays an "No transcriptions yet." message
-
-### Requirement: Delete from history UI
-The system SHALL allow users to delete a history entry from the UI.
-
-#### Scenario: Delete removes row from UI and DB
-- **WHEN** the user clicks the Delete button on a history row
-- **THEN** `DELETE /api/transcriptions/:id` is called and the row is removed from the displayed table on success
-

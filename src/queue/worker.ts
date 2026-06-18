@@ -10,7 +10,7 @@ import {
   requeueProcessingJobs,
   pruneDoneJobs,
 } from '../db';
-import { transcribeFromUrl } from '../services/transcribePipeline';
+import { transcribeFromUrl, pruneAudioCache } from '../services/transcribePipeline';
 import { getRateLimit, getFallbackChain } from '../config/rateLimits';
 
 const IDLE_POLL_MS = 1000;
@@ -88,13 +88,14 @@ async function processJob(job: { id: number; source_url: string }): Promise<void
 
     logApiCall(model);
     try {
-      const { source_type, transcript, meta } = await transcribeFromUrl(job.source_url, model, {
+      const { source_type, content_id, transcript, meta } = await transcribeFromUrl(job.source_url, model, {
         onStage: (stage) => setJobStage(job.id, stage),
         onDownloadProgress: (progress) => setJobStage(job.id, 'downloading', progress),
       });
 
       const transcriptionId = insertTranscription({
         source_type,
+        content_id,
         source_url: job.source_url,
         title: meta.title,
         owner_name: meta.ownerName,
@@ -114,9 +115,18 @@ async function processJob(job: { id: number; source_url: string }): Promise<void
   }
 }
 
+let lastAudioSweep = 0;
+
 async function loop(): Promise<void> {
   for (;;) {
     pruneDoneJobs(DONE_JOB_TTL_MS);
+
+    // Evict stale audio cache files at most once per day, so the cache volumes
+    // don't grow unbounded from one-off transcriptions.
+    if (Date.now() - lastAudioSweep >= DAY_MS) {
+      lastAudioSweep = Date.now();
+      pruneAudioCache();
+    }
 
     let job;
     try {

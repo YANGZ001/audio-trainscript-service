@@ -190,7 +190,7 @@ export async function transcribeFromUrl(
   url: string,
   model: string | undefined,
   cb: TranscribeCallbacks,
-): Promise<{ source_type: SourceType; transcript: string; meta: TranscriptMeta }> {
+): Promise<{ source_type: SourceType; content_id: string; transcript: string; meta: TranscriptMeta }> {
   const source = detectSource(url);
 
   let prepared: Prepared;
@@ -207,5 +207,34 @@ export async function transcribeFromUrl(
     prepared.meta,
   );
 
-  return { source_type: source, transcript, meta: prepared.meta };
+  return { source_type: source, content_id: prepared.tag, transcript, meta: prepared.meta };
+}
+
+// Deletes cached audio (and its metadata sidecar) older than CACHE_TTL_MS across
+// all cache directories, so the cache does not grow unbounded from one-off
+// transcriptions. Called periodically by the worker; errors are logged, not thrown.
+export function pruneAudioCache(): void {
+  const dirs = [BILIBILI_AUDIO_CACHE_DIR, SNIPD_AUDIO_CACHE_DIR, XIAOYUZHOU_AUDIO_CACHE_DIR];
+  const cutoff = Date.now() - CACHE_TTL_MS;
+  let removed = 0;
+  for (const dir of dirs) {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue; // dir absent or unreadable — nothing to prune
+    }
+    for (const entry of entries) {
+      const filePath = path.join(dir, entry);
+      try {
+        if (fs.statSync(filePath).mtimeMs < cutoff) {
+          fs.unlinkSync(filePath);
+          removed++;
+        }
+      } catch (err) {
+        logger.warn({ err, filePath }, 'failed to prune cache file');
+      }
+    }
+  }
+  if (removed > 0) logger.info({ removed }, 'pruned stale audio cache files');
 }
