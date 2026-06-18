@@ -878,14 +878,16 @@
             <button class="btn btn-ghost btn-xs" data-action="dismiss-job" data-id="${j.id}">Dismiss</button>`;
         }
         const stateStyle = j.status === 'failed' ? ' style="color:var(--error)"' : '';
+        const titleText = j.title || j.source_url;
         return `<tr>
+          <td class="col-title"><span class="title-copy" title="${escapeHtml(titleText)}">${escapeHtml(titleText)}</span></td>
           <td class="col-source"><a href="${escapeHtml(j.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(j.source_type)}</a></td>
           <td${stateStyle}>${escapeHtml(jobStateText(j))}</td>
           <td class="col-actions">${actions}</td>
         </tr>`;
       }).join('');
       body.innerHTML = `<table class="history-table">
-        <thead><tr><th>Source</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Title</th><th>Source</th><th>Status</th><th></th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>`;
     }

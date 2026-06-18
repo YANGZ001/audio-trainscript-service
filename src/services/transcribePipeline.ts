@@ -48,6 +48,7 @@ function writeCachedMeta(metaPath: string, meta: TranscriptMeta): void {
 export interface TranscribeCallbacks {
   onStage: (stage: 'uploading' | 'transcribing') => void;
   onDownloadProgress: (progress: number) => void;
+  onTitle?: (title: string) => void;
 }
 
 interface Prepared {
@@ -102,6 +103,7 @@ async function prepareBilibili(url: string, cb: TranscribeCallbacks): Promise<Pr
     log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
   }
 
+  if (meta.title) cb.onTitle?.(meta.title);
   return { audioPath, meta, tag: bvid };
 }
 
@@ -146,6 +148,7 @@ async function prepareSnipd(url: string, cb: TranscribeCallbacks): Promise<Prepa
     log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
   }
 
+  if (meta.title) cb.onTitle?.(meta.title);
   return { audioPath, meta, tag: episodeId };
 }
 
@@ -190,6 +193,7 @@ async function prepareXiaoyuzhou(url: string, cb: TranscribeCallbacks): Promise<
     log.info({ mb: downloadMb, sec: downloadSec }, 'download complete');
   }
 
+  if (meta.title) cb.onTitle?.(meta.title);
   return { audioPath, meta, tag: episodeId };
 }
 

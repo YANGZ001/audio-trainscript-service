@@ -25,6 +25,7 @@ export interface JobRow {
   id: number;
   source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
   source_url: string;
+  title: string | null;
   model: string | null;
   status: JobStatus;
   stage: JobStage | null;
@@ -53,6 +54,7 @@ const g = globalThis as typeof globalThis & {
     requeueProcessingJobs: Database.Statement;
     pruneDoneJobs: Database.Statement;
     cancelJob: Database.Statement;
+    setJobTitle: Database.Statement;
     logApiCall: Database.Statement;
     countApiCalls: Database.Statement;
     pruneApiCalls: Database.Statement;
@@ -102,6 +104,9 @@ const MIGRATIONS: string[] = [
   // unaffected and only new (non-NULL) content_ids dedup via upsert.
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_transcriptions_source_content
      ON transcriptions(source_type, content_id)`,
+  // Store the resolved episode/video title on the job so it's visible in the
+  // queue while the transcription is still in progress.
+  `ALTER TABLE jobs ADD COLUMN title TEXT`,
 ];
 
 function getDb(): Database.Database {
@@ -175,6 +180,7 @@ function getStmts() {
       ),
       pruneDoneJobs: db.prepare(`DELETE FROM jobs WHERE status = 'done' AND updated_at < ?`),
       cancelJob: db.prepare(`DELETE FROM jobs WHERE id = ? AND status IN ('queued', 'failed')`),
+      setJobTitle: db.prepare('UPDATE jobs SET title = ?, updated_at = ? WHERE id = ?'),
       logApiCall: db.prepare('INSERT INTO api_calls (model, ts) VALUES (?, ?)'),
       countApiCalls: db.prepare('SELECT COUNT(*) AS n FROM api_calls WHERE model = ? AND ts > ?'),
       pruneApiCalls: db.prepare('DELETE FROM api_calls WHERE ts < ?'),
@@ -278,6 +284,10 @@ export function getJob(id: number): JobRow | undefined {
 // worker is the only thing that processes them). Reset them to 'queued' at boot.
 export function requeueProcessingJobs(): number {
   return getStmts().requeueProcessingJobs.run(new Date().toISOString()).changes;
+}
+
+export function setJobTitle(id: number, title: string): void {
+  getStmts().setJobTitle.run(title, new Date().toISOString(), id);
 }
 
 export function cancelJob(id: number): boolean {
