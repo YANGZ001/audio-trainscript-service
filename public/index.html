@@ -906,7 +906,7 @@
         if (!currentIds.has(id) && (status === 'queued' || status === 'processing')) activeVanished = true;
       }
       knownJobStatuses = new Map(jobs.map(j => [j.id, j.status]));
-      if (activeVanished) loadHistory();
+      if (activeVanished) { loadHistory(); setUrlStatus(''); }
 
       renderQueue(jobs);
 
