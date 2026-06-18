@@ -38,6 +38,7 @@ export interface JobRow {
 const g = globalThis as typeof globalThis & {
   __db?: Database.Database;
   __dbStmts?: {
+    deleteByUrl: Database.Statement;
     insert: Database.Statement;
     list: Database.Statement;
     delete: Database.Statement;
@@ -129,6 +130,7 @@ function getStmts() {
   if (!g.__dbStmts) {
     const db = getDb();
     g.__dbStmts = {
+      deleteByUrl: db.prepare('DELETE FROM transcriptions WHERE source_url = ?'),
       insert: db.prepare(
         `INSERT INTO transcriptions (source_type, content_id, source_url, title, owner_name, duration, transcript, model, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -191,9 +193,12 @@ export function insertTranscription(params: {
   transcript: string;
   model?: string;
 }): number {
-  // Upsert by (source_type, content_id), so a repeat transcription replaces the
-  // existing row. RETURNING id is used because lastInsertRowid is stale when the
-  // ON CONFLICT clause updates rather than inserts.
+  // Delete any stale row(s) for this exact URL first. The ON CONFLICT on
+  // (source_type, content_id) only deduplicates when both rows have a non-NULL
+  // content_id — SQLite treats NULL != NULL, so old NULL-content_id rows
+  // accumulate otherwise. Deleting by URL is safe: if the same video reappears
+  // via a different URL, the content_id conflict clause handles that case.
+  getStmts().deleteByUrl.run(params.source_url);
   const row = getStmts().insert.get(
     params.source_type,
     params.content_id,
