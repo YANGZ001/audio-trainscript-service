@@ -7,6 +7,7 @@ A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇
 ## System Architecture
 
 ![Project Architecture (Ian Xiaohei Style)](./assets/audio-trainscript-service-illustrations/01-architecture.jpg)
+*Illustration styled after [Ian Xiaohei Illustrations](https://github.com/helloianneo/ian-xiaohei-illustrations/tree/main).*
 
 The following diagram maps the components, network boundaries, and execution paths of the service.
 
