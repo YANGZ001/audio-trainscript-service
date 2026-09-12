@@ -5,8 +5,10 @@ import logger from '../logger';
 const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
 const BILIBILI_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  // Must NOT claim to be a browser: Bilibili risk control fingerprints TLS and
+  // returns 412 "request was banned" when a Chrome UA arrives from a non-Chrome
+  // TLS stack. Plain non-browser UAs pass (verified against view/playurl/CDN).
+  'User-Agent': 'audio-trainscript-service/1.0',
   Referer: 'https://www.bilibili.com',
 };
 
