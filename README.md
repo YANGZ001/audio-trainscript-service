@@ -1,6 +1,6 @@
 # Audio Trainscript Service
 
-A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇宙) and transcribes it using the Gemini API, streamed back as Server-Sent Events (SSE). Includes a built-in browser UI for cross-platform access without scripting.
+A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇宙) — or reads public YouTube videos directly — and transcribes it using the Gemini API, streamed back as Server-Sent Events (SSE). Includes a built-in browser UI for cross-platform access without scripting.
 
 ---
 
@@ -15,7 +15,7 @@ A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇
 ## Component Overviews
 
 ### 1. Clients & Integration Layer
-* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili/Snipd/Xiaoyuzhou URL input and `.m4a` file upload (drag-and-drop). URL submissions are enqueued and tracked in a live **Queue** panel (per-job stage/progress, with cancel and retry); finished runs land in a persistent **History** table offering copy-transcript and delete actions (the list loads metadata only — keeping it fast over slow links — and each transcript is fetched on demand when copied). File uploads stream real-time SSE progress into an output panel with a one-click copy. Transcripts are timestamped plain text (`[MM:SS] Speaker: text`). No installation required — open `http://<host>:3001` in any browser.
+* **Built-in Browser UI (`public/index.html`)**: A single-page interface served directly by Express at `GET /`. Supports Bilibili/Snipd/Xiaoyuzhou/YouTube URL input and `.m4a` file upload (drag-and-drop). URL submissions are enqueued and tracked in a live **Queue** panel (per-job stage/progress, with cancel and retry); finished runs land in a persistent **History** table offering copy-transcript and delete actions (the list loads metadata only — keeping it fast over slow links — and each transcript is fetched on demand when copied). File uploads stream real-time SSE progress into an output panel with a one-click copy. Transcripts are timestamped plain text (`[MM:SS] Speaker: text`). No installation required — open `http://<host>:3001` in any browser.
 * **React Web UI (`bilibili-copilot-web`)**: The downstream application that calls the service over a Tailscale connection and integrates transcription as a subtitle fallback.
 * **CLI Scripts**: Helper scripts included in the repository (`test.sh` for Bilibili URLs and `transcribe-file.sh` for local files) that make raw curl requests and format the Server-Sent Events output.
 * **cURL/REST API**: Direct HTTP API access for testing and integrations.
@@ -46,6 +46,10 @@ A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇
   * Extracts the 24-character hex episode ID from a `xiaoyuzhoufm.com/episode/` URL.
   * Fetches the public episode page and parses the `__NEXT_DATA__` JSON block to obtain the audio URL and metadata — no API token required.
   * Downloads the M4A stream from the public `xyzcdn.net` CDN with a 500 MB size limit.
+* **YouTube Service (`src/services/youtube.ts`)**:
+  * Extracts the 11-character video ID from `watch?v=`, `youtu.be/`, `/shorts/`, and `/live/` URLs.
+  * Fetches title and channel best-effort from the public oEmbed endpoint.
+  * No download or cache: the canonical watch URL is passed to Gemini directly as `fileData.fileUri` (public videos only).
 * **Gemini Service (`src/services/gemini.ts`)**:
   * Authenticates using `GEMINI_API_KEY` and initializes the `@google/genai` client.
   * Uploads audio files to the Google AI Studio Files API.
@@ -62,6 +66,7 @@ A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇
 * **Bilibili APIs**: Used to resolve stream URLs and download audio. Requires `BILIBILI_SESSION_TOKEN` (the `SESSDATA` cookie) for authenticated request access.
 * **Snipd GraphQL API** (`api.snipd.com`): Queried with the episode UUID to fetch the MP3 audio URL and metadata. No authentication required.
 * **Xiaoyuzhou Episode Page + CDN** (`xiaoyuzhoufm.com` / `xyzcdn.net`): The public episode page embeds full episode JSON in a `__NEXT_DATA__` block; the CDN serves M4A audio publicly. No authentication required.
+* **YouTube oEmbed** (`youtube.com/oembed`): Public title/channel lookup for YouTube videos. No authentication required.
 * **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) using the configurable model fallback chain in `config/rate-limits.json` (first choice `gemini-3.1-flash-lite`).
 
 ### API Endpoints
