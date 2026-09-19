@@ -68,7 +68,7 @@ app.post('/api/jobs', (req: Request, res: Response) => {
     return;
   }
 
-  let source: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  let source: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   try {
     source = detectSource(url);
   } catch (err) {
@@ -119,7 +119,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     return;
   }
 
-  let source: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  let source: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   try {
     source = detectSource(url);
   } catch (err) {

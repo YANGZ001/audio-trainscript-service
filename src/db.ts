@@ -5,7 +5,7 @@ import logger from './logger';
 
 export interface TranscriptionRow {
   id: number;
-  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   content_id: string | null;
   source_url: string;
   title: string | null;
@@ -23,7 +23,7 @@ export type JobStage = 'downloading' | 'uploading' | 'transcribing';
 
 export interface JobRow {
   id: number;
-  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   source_url: string;
   title: string | null;
   model: string | null;
@@ -190,7 +190,7 @@ function getStmts() {
 }
 
 export function insertTranscription(params: {
-  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   content_id: string;
   source_url: string;
   title?: string;
@@ -235,7 +235,7 @@ export function getTranscription(id: number): TranscriptionRow | undefined {
 }
 
 export function enqueueJob(params: {
-  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou';
+  source_type: 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
   source_url: string;
 }): number {
   const now = new Date().toISOString();

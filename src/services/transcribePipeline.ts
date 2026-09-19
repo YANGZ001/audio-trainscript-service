@@ -4,9 +4,10 @@ import logger from '../logger';
 import { downloadBilibiliAudio, extractBvid, getVideoMetadata, resolveShortUrl } from './bilibili';
 import { downloadSnipdAudio, extractSnipdEpisodeId, fetchSnipdEpisodeData } from './snipd';
 import { downloadXiaoyuzhouAudio, extractXiaoyuzhouEpisodeId, fetchXiaoyuzhouEpisodeData } from './xiaoyuzhou';
-import { transcribeAudio, TranscriptMeta } from './gemini';
+import { transcribeAudio, transcribeYoutube, TranscriptMeta } from './gemini';
+import { canonicalYoutubeUrl, extractYoutubeVideoId, fetchYoutubeMeta } from './youtube';
 
-export type SourceType = 'bilibili' | 'snipd' | 'xiaoyuzhou';
+export type SourceType = 'bilibili' | 'snipd' | 'xiaoyuzhou' | 'youtube';
 
 const BILIBILI_AUDIO_CACHE_DIR = '/data/bilibili-audio';
 const SNIPD_AUDIO_CACHE_DIR = '/data/snipd-audio';
@@ -17,7 +18,8 @@ export function detectSource(url: string): SourceType {
   if (/bilibili\.com|b23\.tv/i.test(url)) return 'bilibili';
   if (/share\.snipd\.com\/episode\//i.test(url)) return 'snipd';
   if (/xiaoyuzhoufm\.com\/episode\//i.test(url)) return 'xiaoyuzhou';
-  throw new Error('Unsupported URL — must be a Bilibili, Snipd, or Xiaoyuzhou episode URL');
+  if (/youtube\.com|youtu\.be/i.test(url)) return 'youtube';
+  throw new Error('Unsupported URL — must be a Bilibili, Snipd, Xiaoyuzhou, or YouTube URL');
 }
 
 function isCacheHit(cachePath: string): boolean {
@@ -205,6 +207,21 @@ export async function transcribeFromUrl(
   cb: TranscribeCallbacks,
 ): Promise<{ source_type: SourceType; content_id: string; transcript: string; meta: TranscriptMeta }> {
   const source = detectSource(url);
+
+  if (source === 'youtube') {
+    const videoId = extractYoutubeVideoId(url);
+    logger.child({ videoId }).info('transcribe request received');
+    const meta = await fetchYoutubeMeta(videoId);
+    if (meta.title) cb.onTitle?.(meta.title);
+    const transcript = await transcribeYoutube(
+      canonicalYoutubeUrl(videoId),
+      () => cb.onStage('transcribing'),
+      model,
+      videoId,
+      meta,
+    );
+    return { source_type: source, content_id: videoId, transcript, meta };
+  }
 
   let prepared: Prepared;
   if (source === 'bilibili') prepared = await prepareBilibili(url, cb);

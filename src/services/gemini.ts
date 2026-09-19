@@ -44,6 +44,48 @@ function buildPrompt(meta?: TranscriptMeta): string {
   );
 }
 
+async function generateTranscript(
+  ai: GoogleGenAI,
+  model: string,
+  fileData: { mimeType?: string; fileUri: string },
+  log: typeof logger,
+  meta?: TranscriptMeta,
+): Promise<string> {
+  const result = await ai.models.generateContent({
+    model,
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { fileData },
+          { text: buildPrompt(meta) },
+        ],
+      },
+    ],
+  });
+
+  const raw = (result.text ?? '').trim();
+  log.info({ chars: raw.length }, 'transcript received');
+  return raw;
+}
+
+// Gemini reads public YouTube videos directly from the URL — no download or upload.
+export async function transcribeYoutube(
+  videoUrl: string,
+  onTranscribing: () => void,
+  model?: string,
+  tag?: string,
+  meta?: TranscriptMeta,
+): Promise<string> {
+  const log = logger.child({ tag: tag ?? 'gemini' });
+  const ai = createClient();
+  const modelToUse = model ?? GEMINI_MODEL;
+
+  log.info({ model: modelToUse }, 'generating transcript from YouTube URL');
+  onTranscribing();
+  return generateTranscript(ai, modelToUse, { fileUri: videoUrl }, log, meta);
+}
+
 export async function transcribeAudio(
   filePath: string,
   onTranscribing: () => void,
@@ -89,22 +131,7 @@ export async function transcribeAudio(
     log.info({ model: modelToUse }, 'file ready, generating transcript');
     onTranscribing();
 
-    const result = await ai.models.generateContent({
-      model: modelToUse,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { fileData: { mimeType, fileUri: fileInfo.uri } },
-            { text: buildPrompt(meta) },
-          ],
-        },
-      ],
-    });
-
-    const raw = (result.text ?? '').trim();
-    log.info({ chars: raw.length }, 'transcript received');
-    return raw;
+    return await generateTranscript(ai, modelToUse, { mimeType, fileUri: fileInfo.uri }, log, meta);
   } finally {
     if (uploadedName) {
       await ai.files.delete({ name: uploadedName }).catch(() => {});
