@@ -81,9 +81,9 @@ app.post('/api/jobs', (req: Request, res: Response) => {
   res.status(201).json({ id, status: 'queued' });
 });
 
-app.get('/api/jobs', (_req: Request, res: Response) => {
+app.get('/api/jobs', (req: Request, res: Response) => {
   try {
-    res.json(listJobs());
+    res.json(listJobs(req.query.includeDone === 'true'));
   } catch (err) {
     logger.error({ err }, 'failed to list jobs');
     res.status(500).json({ error: 'Database error' });
