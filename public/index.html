@@ -166,7 +166,7 @@
       margin-bottom: 0.4rem;
     }
 
-    input[type="url"], select {
+    input[type="url"], input[type="search"], select {
       width: 100%;
       padding: 0.6rem 0.75rem;
       border: 1px solid var(--border);
@@ -418,12 +418,50 @@
       text-decoration: underline;
     }
     .history-table .col-actions {
-      display: flex;
-      gap: 0.375rem;
-      justify-content: flex-end;
+      text-align: right;
       white-space: nowrap;
     }
+    .history-table .col-actions .btn + .btn { margin-left: 0.375rem; }
     .btn-xs { font-size: 0.6875rem; padding: 0.3rem 0.625rem; letter-spacing: 0.03em; }
+    .history-tools { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .history-tools input { flex: 1; min-width: 0; }
+    .history-tools select { width: 160px; }
+    .feedback { font-size: 0.8125rem; line-height: 1.6; margin-bottom: 0.5rem; }
+    .feedback.error { color: var(--error); }
+    .feedback.success { color: var(--success); }
+    .history-title-btn { background: none; border: none; color: inherit; font: inherit; cursor: pointer; text-align: left; max-width: 100%; }
+    .history-title-btn:hover { color: var(--amber); }
+    .history-title-btn span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-title-btn small { color: var(--muted); font-size: 0.6875rem; }
+    .history-table tr.highlighted { background: var(--amber-glow); }
+    #history-body, #queue-body { overflow-x: auto; }
+    #completion-notice { margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--border2); border-radius: 3px; }
+    .completion-item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.25rem 0; }
+    .completion-item span { overflow-wrap: anywhere; }
+    #history-count { color: var(--muted); font-size: 0.75rem; }
+    .reader { width: min(900px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; padding: 1.5rem; background: var(--surface); color: var(--text); border: 1px solid var(--border2); border-radius: 6px; }
+    .reader::backdrop { background: rgba(0,0,0,0.65); }
+    body:has(.reader[open]) { overflow: hidden; }
+    .reader-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+    #reader-title { font-size: 1.125rem; overflow-wrap: anywhere; }
+    #reader-meta { color: var(--muted); font-size: 0.75rem; margin: 0.5rem 0 1rem; }
+    #reader-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; font-family: inherit; font-size: 0.9375rem; margin: 1rem 0; }
+    .reader-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; position: sticky; top: -1.5rem; background: var(--surface); padding: 0.75rem 0; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+    @media (max-width: 600px) {
+      body { padding: 1.5rem 0.75rem 2rem; }
+      header { gap: 0.75rem; }
+      .brand { min-width: 0; }
+      .brand h1 { font-size: 1.4rem; }
+      .brand p { line-height: 1.5; }
+      .waveform { display: none; }
+      .history-tools { flex-wrap: wrap; }
+      .history-tools input { flex-basis: 100%; }
+      .history-tools select { flex: 1; }
+      .reader { padding: 1rem; }
+      .reader-actions { top: -1rem; }
+      .btn-xs { min-height: 36px; }
+    }
   </style>
 </head>
 <body>
@@ -499,6 +537,9 @@
       </div>
     </div>
 
+    <div id="completion-notice" class="hidden" role="status" aria-live="polite"></div>
+    <div id="queue-refresh-status" class="feedback" role="status"></div>
+    <div id="queue-action-status" class="feedback" role="status"></div>
     <div class="history-section hidden" id="queue-section">
       <div class="history-header">
         <span class="history-title">Queue</span>
@@ -509,12 +550,41 @@
     <div class="history-section" id="history-section">
       <div class="history-header">
         <span class="history-title">History</span>
+        <span id="history-count"></span>
       </div>
+      <div class="history-tools">
+        <input type="search" id="history-search" aria-label="搜索标题或作者" placeholder="搜索标题或作者…" />
+        <select id="history-source" aria-label="筛选来源">
+          <option value="">全部来源</option>
+          <option value="bilibili">Bilibili</option>
+          <option value="snipd">Snipd</option>
+          <option value="xiaoyuzhou">小宇宙</option>
+          <option value="youtube">YouTube</option>
+        </select>
+        <button class="btn btn-ghost" id="history-refresh">刷新</button>
+      </div>
+      <div id="history-status" class="feedback" role="status"></div>
       <div id="history-body">
         <p class="history-empty">No transcriptions yet.</p>
       </div>
     </div>
   </div>
+
+  <dialog class="reader" id="transcript-reader" aria-labelledby="reader-title">
+    <div class="reader-header">
+      <h2 id="reader-title"></h2>
+      <button class="btn btn-ghost" id="reader-close" aria-label="关闭正文">关闭</button>
+    </div>
+    <p id="reader-meta"></p>
+    <div class="reader-actions">
+      <button class="btn btn-primary" id="reader-copy" disabled>复制全文</button>
+      <button class="btn btn-ghost" id="reader-txt" disabled>下载 TXT</button>
+      <button class="btn btn-ghost" id="reader-md" disabled>下载 Markdown</button>
+      <button class="btn btn-ghost hidden" id="reader-retry">重试加载</button>
+    </div>
+    <div id="reader-status" class="feedback" role="status"></div>
+    <pre id="reader-text"></pre>
+  </dialog>
 
   <script>
     let activeTab = 'url';
@@ -623,6 +693,7 @@
         }
         setUrlStatus('queued ✓', 'success');
         document.getElementById('url-input').value = '';
+        knownJobStatuses.set(json.id, 'queued');
         startQueuePolling();
         pollJobs();
       } catch (err) {
@@ -724,8 +795,8 @@
       }
       const ta = document.createElement('textarea');
       ta.value = text; document.body.appendChild(ta); ta.select();
-      const ok = document.execCommand('copy'); document.body.removeChild(ta);
-      return ok;
+      try { return document.execCommand('copy'); } catch { return false; }
+      finally { document.body.removeChild(ta); }
     }
 
     async function copyTranscript() {
@@ -759,100 +830,217 @@
         + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
 
-    function renderHistory(rows) {
+    let historyRows = [];
+    let historyLoaded = false;
+    let historyRequest = null;
+    const highlightedHistory = new Set();
+    let readerRow = null;
+    let readerVersion = 0;
+    let readerText = null;
+
+    function feedback(id, message, type = '') {
+      const el = document.getElementById(id);
+      el.textContent = message;
+      el.className = 'feedback' + (type ? ' ' + type : '');
+    }
+
+    async function checkedFetch(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || '请求失败（HTTP ' + res.status + '）');
+      }
+      return res;
+    }
+
+    function renderHistory() {
       const body = document.getElementById('history-body');
+      const query = document.getElementById('history-search').value.trim().toLocaleLowerCase();
+      const source = document.getElementById('history-source').value;
+      const rows = historyRows.filter(row => (!source || row.source_type === source)
+        && ((row.title || '') + ' ' + (row.owner_name || '')).toLocaleLowerCase().includes(query));
+      document.getElementById('history-count').textContent = historyLoaded ? rows.length + ' / ' + historyRows.length + ' 条' : '';
       if (!rows.length) {
-        body.innerHTML = '<p class="history-empty">No transcriptions yet.</p>';
+        body.innerHTML = '<p class="history-empty">' + (!historyLoaded ? '正在加载历史…' : historyRows.length ? '没有匹配的记录，请调整搜索或筛选。' : 'No transcriptions yet.') + '</p>';
         return;
       }
       const rowsHtml = rows.map(row => {
         const title = row.title ? escapeHtml(row.title) : '(untitled)';
-        const owner = row.owner_name ? ' · ' + escapeHtml(row.owner_name) : '';
         const tooltip = escapeHtml((row.title || '') + (row.owner_name ? ' · ' + row.owner_name : ''));
-        return `<tr>
-          <td class="col-title"><span class="title-copy" title="${tooltip}" data-action="copy-title" data-title="${tooltip}">${title}</span></td>
+        return `<tr data-history-id="${row.id}" class="${highlightedHistory.has(row.id) ? 'highlighted' : ''}">
+          <td class="col-title"><button class="history-title-btn" title="查看正文：${tooltip}" data-action="view-transcript" data-id="${row.id}"><span>${title}</span>${row.owner_name ? '<small>' + escapeHtml(row.owner_name) + '</small>' : ''}</button></td>
           <td class="col-source"><a href="${escapeHtml(row.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.source_type)}</a></td>
           <td class="col-date">${formatDate(row.created_at)}</td>
           <td class="col-dur">${formatDuration(row.duration)}</td>
           <td class="col-actions">
-            <button class="btn btn-ghost btn-xs" data-action="copy-transcript" data-id="${row.id}">Copy transcript</button>
             <button class="btn btn-ghost btn-xs" data-action="delete" data-id="${row.id}" style="color:var(--error);border-color:var(--error)">Del</button>
           </td>
         </tr>`;
       }).join('');
       body.innerHTML = `<table class="history-table">
-        <thead><tr>
-          <th>Title</th><th>Source</th><th>Date</th><th>Duration</th><th></th>
-        </tr></thead>
+        <thead><tr><th>Title / Author</th><th>Source</th><th>Date</th><th>Duration</th><th></th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>`;
     }
 
-    async function loadHistory() {
+    async function loadHistory(force = false) {
+      if (historyRequest) {
+        if (force !== true) return historyRequest;
+        await historyRequest;
+      }
+      historyRequest = (async () => {
+        const refresh = document.getElementById('history-refresh');
+        refresh.disabled = true;
+        feedback('history-status', '正在刷新…');
+        try {
+          const rows = await (await checkedFetch('/api/transcriptions')).json();
+          const previous = new Map(historyRows.map(row => [row.id, JSON.stringify(row)]));
+          for (const row of rows) {
+            if (previous.get(row.id) !== JSON.stringify(row)) transcriptCache.delete(row.id);
+          }
+          const ids = new Set(rows.map(row => row.id));
+          for (const id of transcriptCache.keys()) if (!ids.has(id)) transcriptCache.delete(id);
+          historyRows = rows;
+          historyLoaded = true;
+          renderHistory();
+          feedback('history-status', '');
+          return true;
+        } catch (err) {
+          if (!historyLoaded) document.getElementById('history-body').innerHTML = '<p class="history-empty">历史加载失败，点击刷新重试。</p>';
+          feedback('history-status', '历史刷新失败：' + err.message + '。可点击刷新重试。', 'error');
+          return false;
+        } finally {
+          refresh.disabled = false;
+        }
+      })();
+      try { return await historyRequest; } finally { historyRequest = null; }
+    }
+
+    async function getTranscriptText(id) {
+      if (transcriptCache.has(id)) return transcriptCache.get(id);
+      const row = historyRows.find(row => row.id === id);
+      const text = (await (await checkedFetch('/api/transcriptions/' + id)).json()).transcript;
+      if (typeof text !== 'string') throw new Error('服务器没有返回正文');
+      if (row && historyRows.find(current => current.id === id) === row) transcriptCache.set(id, text);
+      return text;
+    }
+
+    async function openReader(id) {
+      const row = historyRows.find(row => row.id === id);
+      if (!row) {
+        feedback('history-status', '找不到这条记录，请刷新历史后重试。', 'error');
+        return;
+      }
+      const version = ++readerVersion;
+      readerRow = row;
+      readerText = null;
+      const dialog = document.getElementById('transcript-reader');
+      document.getElementById('reader-title').textContent = row.title || '(untitled)';
+      document.getElementById('reader-meta').textContent = [row.owner_name, row.source_type, formatDate(row.created_at), formatDuration(row.duration)].filter(Boolean).join(' · ');
+      document.getElementById('reader-text').textContent = '';
+      document.getElementById('reader-retry').classList.add('hidden');
+      for (const action of ['copy', 'txt', 'md']) document.getElementById('reader-' + action).disabled = true;
+      feedback('reader-status', '正在加载正文…');
+      if (!dialog.open) dialog.showModal();
+      dialog.scrollTop = 0;
       try {
-        const res = await fetch('/api/transcriptions');
-        if (!res.ok) { console.warn('loadHistory: server returned', res.status); return; }
-        renderHistory(await res.json());
+        const text = await getTranscriptText(id);
+        if (version !== readerVersion || !dialog.open) return;
+        readerText = text;
+        document.getElementById('reader-text').textContent = text;
+        feedback('reader-status', text.length.toLocaleString() + ' 字符');
+        for (const action of ['copy', 'txt', 'md']) document.getElementById('reader-' + action).disabled = false;
       } catch (err) {
-        console.warn('loadHistory failed', err);
+        if (version !== readerVersion || !dialog.open) return;
+        feedback('reader-status', '正文加载失败：' + err.message, 'error');
+        document.getElementById('reader-retry').classList.remove('hidden');
       }
     }
 
-    async function deleteHistoryRow(id, btn) {
-      btn.disabled = true;
-      try {
-        const res = await fetch('/api/transcriptions/' + id, { method: 'DELETE' });
-        if (res.ok) await loadHistory();
-        else btn.disabled = false;
-      } catch {
-        btn.disabled = false;
-      }
+    function downloadTranscript(extension) {
+      if (readerText === null || !readerRow) return;
+      const name = (readerRow.title || 'transcript-' + readerRow.id).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 100);
+      const url = URL.createObjectURL(new Blob([readerText], { type: extension === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name + '.' + extension;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+
+    document.getElementById('reader-close').addEventListener('click', () => document.getElementById('transcript-reader').close());
+    document.getElementById('transcript-reader').addEventListener('close', () => { readerVersion++; readerText = null; });
+    document.getElementById('reader-retry').addEventListener('click', () => { if (readerRow) openReader(readerRow.id); });
+    document.getElementById('reader-copy').addEventListener('click', async () => {
+      if (readerText === null) return;
+      const version = readerVersion;
+      const ok = await copyToClipboard(readerText);
+      if (version === readerVersion) feedback('reader-status', ok ? '已复制全文' : '复制失败，请选择正文手动复制。', ok ? 'success' : 'error');
+    });
+    document.getElementById('reader-txt').addEventListener('click', () => downloadTranscript('txt'));
+    document.getElementById('reader-md').addEventListener('click', () => downloadTranscript('md'));
+    document.getElementById('history-search').addEventListener('input', renderHistory);
+    document.getElementById('history-source').addEventListener('change', renderHistory);
+    document.getElementById('history-refresh').addEventListener('click', loadHistory);
 
     document.getElementById('history-body').addEventListener('click', async (e) => {
       const el = e.target.closest('[data-action]');
-      if (!el) return;
-      const action = el.dataset.action;
-      if (action === 'delete') deleteHistoryRow(Number(el.dataset.id), el);
-      else if (action === 'copy-transcript') {
-        const id = Number(el.dataset.id);
-        const orig = el.textContent;
-        let text = transcriptCache.get(id);
-        if (text === undefined) {
-          el.disabled = true;
-          el.textContent = 'Loading…';
-          try {
-            const res = await fetch('/api/transcriptions/' + id);
-            if (!res.ok) throw new Error('server returned ' + res.status);
-            text = (await res.json()).transcript;
-            transcriptCache.set(id, text);
-          } catch (err) {
-            console.warn('copy-transcript fetch failed', err);
-            el.textContent = 'Failed';
-            setTimeout(() => { el.textContent = orig; el.disabled = false; }, 1200);
-            return;
-          }
-          el.disabled = false;
-          el.textContent = orig;
-        }
-        if (await copyToClipboard(text)) {
-          el.textContent = 'Copied!';
-          setTimeout(() => { el.textContent = orig; }, 1200);
-        }
-      }
-      else if (action === 'copy-title') {
-        const text = el.dataset.title;
-        if (await copyToClipboard(text)) {
-          const original = el.innerHTML;
-          el.textContent = 'Copied!';
-          setTimeout(() => { el.innerHTML = original; }, 1200);
-        }
+      if (!el || el.disabled) return;
+      const id = Number(el.dataset.id);
+      if (el.dataset.action === 'view-transcript') { openReader(id); return; }
+      if (el.dataset.action !== 'delete') return;
+      const original = el.textContent;
+      el.disabled = true;
+      el.textContent = 'Deleting…';
+      try {
+        await checkedFetch('/api/transcriptions/' + id, { method: 'DELETE' });
+        transcriptCache.delete(id);
+        highlightedHistory.delete(id);
+        historyRows = historyRows.filter(row => row.id !== id);
+        renderHistory();
+        feedback('history-status', '已删除记录', 'success');
+      } catch (err) {
+        feedback('history-status', '删除失败：' + err.message, 'error');
+      } finally {
+        el.disabled = false;
+        el.textContent = original;
       }
     });
 
     // ---- Queue panel (URL jobs) ----
     let knownJobStatuses = new Map();
     let queuePollTimer = null;
+    let queueRequest = null;
+    let queueSignature = '';
+    const pendingJobActions = new Set();
+    const retrySubmitted = new Set();
+    const completedJobs = new Map();
+
+    function renderCompletions() {
+      const notice = document.getElementById('completion-notice');
+      notice.classList.toggle('hidden', !completedJobs.size);
+      notice.innerHTML = Array.from(completedJobs.values()).map(job => `<div class="completion-item">
+        <span>转写完成：${escapeHtml(job.title || job.source_url)}</span>
+        <button class="btn btn-ghost btn-xs" data-transcription-id="${job.transcription_id}">查看结果</button>
+      </div>`).join('');
+    }
+
+    document.getElementById('completion-notice').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-transcription-id]');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      try {
+        if (!await loadHistory(true)) return;
+        const id = Number(btn.dataset.transcriptionId);
+        document.getElementById('history-search').value = '';
+        document.getElementById('history-source').value = '';
+        renderHistory();
+        document.querySelector('[data-history-id="' + id + '"]')?.scrollIntoView({ block: 'center' });
+        await openReader(id);
+      } finally { btn.disabled = false; }
+    });
 
     function jobStateText(j) {
       if (j.status === 'queued') return 'Queued';
@@ -865,6 +1053,9 @@
 
     function renderQueue(jobs) {
       const active = jobs.filter(j => j.status === 'queued' || j.status === 'processing' || j.status === 'failed');
+      const signature = JSON.stringify([active, Array.from(pendingJobActions), Array.from(retrySubmitted)]);
+      if (signature === queueSignature) return;
+      queueSignature = signature;
       const section = document.getElementById('queue-section');
       const body = document.getElementById('queue-body');
       if (!active.length) { section.classList.add('hidden'); body.innerHTML = ''; return; }
@@ -874,9 +1065,10 @@
         if (j.status === 'queued') {
           actions = `<button class="btn btn-ghost btn-xs" data-action="cancel-job" data-id="${j.id}">Cancel</button>`;
         } else if (j.status === 'failed') {
-          actions = `<button class="btn btn-ghost btn-xs" data-action="retry-job" data-id="${j.id}" data-url="${escapeHtml(j.source_url)}" data-model="${escapeHtml(j.model || '')}">Retry</button>
+          actions = `<button class="btn btn-ghost btn-xs" data-action="retry-job" data-id="${j.id}" data-url="${escapeHtml(j.source_url)}" ${retrySubmitted.has(j.id) ? 'disabled' : ''}>${retrySubmitted.has(j.id) ? '已重新提交' : 'Retry'}</button>
             <button class="btn btn-ghost btn-xs" data-action="dismiss-job" data-id="${j.id}">Dismiss</button>`;
         }
+        if (pendingJobActions.has(j.id)) actions = actions.replaceAll('<button ', '<button disabled ');
         const stateStyle = j.status === 'failed' ? ' style="color:var(--error)"' : '';
         const titleText = j.title || j.source_url;
         return `<tr>
@@ -893,28 +1085,50 @@
     }
 
     async function pollJobs() {
-      let jobs;
-      try {
-        const res = await fetch('/api/jobs');
-        if (!res.ok) return;
-        jobs = await res.json();
-      } catch { return; }
-
-      // Completed jobs drop off the list (done jobs aren't returned); when a job
-      // we knew as active disappears, a transcript likely landed in History.
-      const currentIds = new Set(jobs.map(j => j.id));
-      let activeVanished = false;
-      for (const [id, status] of knownJobStatuses) {
-        if (!currentIds.has(id) && (status === 'queued' || status === 'processing')) activeVanished = true;
-      }
-      knownJobStatuses = new Map(jobs.map(j => [j.id, j.status]));
-      if (activeVanished) { loadHistory(); setUrlStatus(''); }
-
-      renderQueue(jobs);
-
-      // Stop polling once nothing is in flight; re-armed on the next enqueue.
-      const anyActive = jobs.some(j => j.status === 'queued' || j.status === 'processing');
-      if (!anyActive && queuePollTimer) { clearInterval(queuePollTimer); queuePollTimer = null; }
+      if (queueRequest) return queueRequest;
+      queueRequest = (async () => {
+        const statusSnapshot = new Map(knownJobStatuses);
+        try {
+          const jobs = await (await checkedFetch('/api/jobs?includeDone=true')).json();
+          feedback('queue-refresh-status', '');
+          let refreshHistory = false;
+          let newCompletion = false;
+          const currentIds = new Set(jobs.map(job => job.id));
+          for (const [id, status] of statusSnapshot) {
+            if (!currentIds.has(id) && (status === 'queued' || status === 'processing')) refreshHistory = true;
+          }
+          for (const job of jobs) {
+            const previous = knownJobStatuses.get(job.id);
+            if (job.status === 'done' && job.transcription_id
+              && (previous === 'queued' || previous === 'processing')) {
+              completedJobs.set(job.id, job);
+              highlightedHistory.add(job.transcription_id);
+              transcriptCache.delete(job.transcription_id);
+              refreshHistory = true;
+              newCompletion = true;
+            }
+          }
+          const nextStatuses = new Map(jobs.map(job => [job.id, job.status]));
+          // A submission may finish while this poll is in flight. Keep that new
+          // job tracked until the next response can include it.
+          for (const [id, status] of knownJobStatuses) {
+            if (!currentIds.has(id) && statusSnapshot.get(id) !== status) nextStatuses.set(id, status);
+          }
+          knownJobStatuses = nextStatuses;
+          if (newCompletion) renderCompletions();
+          if (refreshHistory) await loadHistory(true);
+          renderQueue(jobs);
+          const anyActive = Array.from(knownJobStatuses.values()).some(status => status === 'queued' || status === 'processing');
+          if (!anyActive && queuePollTimer && !pendingJobActions.size) {
+            clearInterval(queuePollTimer);
+            queuePollTimer = null;
+          }
+        } catch (err) {
+          feedback('queue-refresh-status', '任务状态刷新失败：' + err.message + '。正在自动重试。', 'error');
+          startQueuePolling();
+        }
+      })();
+      try { await queueRequest; } finally { queueRequest = null; }
     }
 
     function startQueuePolling() {
@@ -924,25 +1138,46 @@
 
     document.getElementById('queue-body').addEventListener('click', async (e) => {
       const el = e.target.closest('[data-action]');
-      if (!el) return;
+      if (!el || el.disabled) return;
+      const id = Number(el.dataset.id);
+      if (pendingJobActions.has(id)) return;
       const action = el.dataset.action;
-      el.disabled = true;
+      pendingJobActions.add(id);
+      el.closest('tr').querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+      feedback('queue-action-status', '正在处理…');
       try {
-        if (action === 'cancel-job' || action === 'dismiss-job') {
-          await fetch('/api/jobs/' + Number(el.dataset.id), { method: 'DELETE' });
-        } else if (action === 'retry-job') {
-          const body = { url: el.dataset.url };
-          if (el.dataset.model) body.model = el.dataset.model;
-          await fetch('/api/jobs', {
+        if (action === 'retry-job') {
+          if (retrySubmitted.has(id)) return;
+          const job = await (await checkedFetch('/api/jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          await fetch('/api/jobs/' + Number(el.dataset.id), { method: 'DELETE' });
+            body: JSON.stringify({ url: el.dataset.url }),
+          })).json();
+          retrySubmitted.add(id);
+          knownJobStatuses.set(job.id, 'queued');
           startQueuePolling();
         }
-      } catch {}
-      pollJobs();
+        await checkedFetch('/api/jobs/' + id, { method: 'DELETE' });
+        retrySubmitted.delete(id);
+        knownJobStatuses.delete(id);
+        feedback('queue-action-status', action === 'retry-job' ? '已重新提交任务' : action === 'cancel-job' ? '已取消任务' : '已移除失败记录', 'success');
+      } catch (err) {
+        const message = retrySubmitted.has(id)
+          ? '新任务已提交，但旧失败记录移除失败。请点击 Dismiss 清理，勿重复提交：'
+          : '操作失败：';
+        feedback('queue-action-status', message + err.message, 'error');
+      } finally {
+        pendingJobActions.delete(id);
+        el.closest('tr').querySelectorAll('button').forEach(btn => {
+          btn.disabled = retrySubmitted.has(id) && btn.dataset.action === 'retry-job';
+        });
+        queueSignature = '';
+        await pollJobs();
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { loadHistory(); startQueuePolling(); pollJobs(); }
     });
 
     loadHistory();

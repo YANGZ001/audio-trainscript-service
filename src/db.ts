@@ -50,6 +50,7 @@ const g = globalThis as typeof globalThis & {
     markJobDone: Database.Statement;
     markJobFailed: Database.Statement;
     listJobs: Database.Statement;
+    listJobsWithDone: Database.Statement;
     getJob: Database.Statement;
     requeueProcessingJobs: Database.Statement;
     pruneDoneJobs: Database.Statement;
@@ -174,6 +175,7 @@ function getStmts() {
         `UPDATE jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`
       ),
       listJobs: db.prepare(`SELECT * FROM jobs WHERE status != 'done' ORDER BY created_at DESC`),
+      listJobsWithDone: db.prepare('SELECT * FROM jobs ORDER BY created_at DESC'),
       getJob: db.prepare('SELECT * FROM jobs WHERE id = ?'),
       requeueProcessingJobs: db.prepare(
         `UPDATE jobs SET status = 'queued', stage = NULL, progress = NULL, updated_at = ? WHERE status = 'processing'`
@@ -266,8 +268,9 @@ export function markJobFailed(id: number, error: string): void {
 
 // Active and failed jobs only — `done` jobs are excluded (their transcript lives
 // in History) and pruned by the worker, so the polling payload stays small.
-export function listJobs(): JobRow[] {
-  return getStmts().listJobs.all() as JobRow[];
+export function listJobs(includeDone = false): JobRow[] {
+  const stmts = getStmts();
+  return (includeDone ? stmts.listJobsWithDone : stmts.listJobs).all() as JobRow[];
 }
 
 // Deletes `done` jobs older than `ttlMs`. The short retention lets an in-flight
