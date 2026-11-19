@@ -230,7 +230,7 @@ app.post('/api/upload-transcribe', async (req: Request, res: Response) => {
     const transcript = await transcribeAudio(tempFile, () => {
       if (!clientGone) sendEvent('transcribing', {});
     }, model, fileTag);
-    log.info({ chars: transcript.length, model: model ?? 'gemini-3.1-flash-lite' }, 'transcription done');
+    log.info({ chars: transcript.length, model: model ?? 'gemini-3.6-flash' }, 'transcription done');
     if (!clientGone) sendEvent('done', { text: transcript });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

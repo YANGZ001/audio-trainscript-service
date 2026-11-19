@@ -66,7 +66,7 @@ Open **`http://<host>:3001`** in any browser (Chrome, Edge, Firefox).
 | **Progress** | Real-time status: download %, uploading, transcribing |
 | **Output** | Timestamped plain text (`[MM:SS] content` per segment) |
 | **Copy** | One-click copy to clipboard |
-| **Model** | Dropdown to select the Gemini model (defaults to `gemini-3.1-flash-lite`) |
+| **Model** | Dropdown to select the Gemini model (defaults to `gemini-3.6-flash`) |
 
 > The web UI is the recommended access method for Windows users, where the shell scripts cannot be reused directly.
 
@@ -224,7 +224,7 @@ Pre-stream errors (wrong file type, file too large, missing field) are returned 
 
 ## Model Selection
 
-Both endpoints accept an optional `?model=` query parameter. If omitted, the server defaults to `gemini-3.1-flash-lite`.
+Both endpoints accept an optional `?model=` query parameter. If omitted, the server defaults to `gemini-3.6-flash`.
 
 ```bash
 # Via shell scripts — set the MODEL env var

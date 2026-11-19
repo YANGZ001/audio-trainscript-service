@@ -67,7 +67,7 @@ A microservice that downloads audio from Bilibili, Snipd, and Xiaoyuzhou (小宇
 * **Snipd GraphQL API** (`api.snipd.com`): Queried with the episode UUID to fetch the MP3 audio URL and metadata. No authentication required.
 * **Xiaoyuzhou Episode Page + CDN** (`xiaoyuzhoufm.com` / `xyzcdn.net`): The public episode page embeds full episode JSON in a `__NEXT_DATA__` block; the CDN serves M4A audio publicly. No authentication required.
 * **YouTube oEmbed** (`youtube.com/oembed`): Public title/channel lookup for YouTube videos. No authentication required.
-* **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) using the configurable model fallback chain in `config/rate-limits.json` (first choice `gemini-3.1-flash-lite`).
+* **Google Gemini API / AI Studio**: Receives audio uploads and performs ASR (Automated Speech Recognition) using the configurable model fallback chain in `config/rate-limits.json` (first choice `gemini-3.6-flash`).
 
 ### API Endpoints
 
