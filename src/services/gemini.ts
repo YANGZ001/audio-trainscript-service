@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import logger from '../logger';
 
-export const GEMINI_MODEL = 'gemini-3.1-flash-lite';
+export const GEMINI_MODEL = 'gemini-3.6-flash';
 const ORPHAN_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 function createClient(): GoogleGenAI {

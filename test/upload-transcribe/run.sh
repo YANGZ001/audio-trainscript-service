@@ -13,7 +13,7 @@ ENDPOINT="$HOST/api/upload-transcribe"
 echo "Host   : $HOST"
 echo "File   : $FILE"
 [[ -n "$OUTPUT" ]] && echo "Output : $OUTPUT"
-echo "Model  : ${MODEL:-gemini-3.1-flash-lite}"
+echo "Model  : ${MODEL:-gemini-3.6-flash}"
 echo ""
 
 if [[ ! -f "$FILE" ]]; then
