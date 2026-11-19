@@ -13,6 +13,7 @@ import {
 } from '../db';
 import { transcribeFromUrl, pruneAudioCache } from '../services/transcribePipeline';
 import { getRateLimit, getFallbackChain } from '../config/rateLimits';
+import { TranscriptRejectedError } from '../services/gemini';
 
 const IDLE_POLL_MS = 1000;
 const MINUTE_MS = 60 * 1000;
@@ -31,6 +32,7 @@ function sleep(ms: number): Promise<void> {
 // a short backoff would just burn more. Permanent errors (4xx/auth/validation)
 // are not retried either.
 function isRetryable(err: unknown): boolean {
+  if (err instanceof TranscriptRejectedError) return true;
   const status = (err as { status?: unknown }).status;
   if (typeof status === 'number') return status >= 500;
   const code = (err as { code?: unknown }).code;
