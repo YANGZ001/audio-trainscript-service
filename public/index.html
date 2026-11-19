@@ -873,6 +873,7 @@
           <td class="col-date">${formatDate(row.created_at)}</td>
           <td class="col-dur">${formatDuration(row.duration)}</td>
           <td class="col-actions">
+            <button class="btn btn-ghost btn-xs" data-action="redo" data-id="${row.id}" data-url="${escapeHtml(row.source_url)}">Redo</button>
             <button class="btn btn-ghost btn-xs" data-action="delete" data-id="${row.id}" style="color:var(--error);border-color:var(--error)">Del</button>
           </td>
         </tr>`;
@@ -990,6 +991,26 @@
       if (!el || el.disabled) return;
       const id = Number(el.dataset.id);
       if (el.dataset.action === 'view-transcript') { openReader(id); return; }
+      if (el.dataset.action === 'redo') {
+        // Re-submitting the URL overwrites this row when the new job finishes.
+        if (!confirm('重新转写会覆盖当前文稿，确定吗？')) return;
+        el.disabled = true;
+        try {
+          const job = await (await checkedFetch('/api/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: el.dataset.url }),
+          })).json();
+          knownJobStatuses.set(job.id, 'queued');
+          startQueuePolling();
+          feedback('history-status', '已提交重新转写，完成后会替换这条记录', 'success');
+        } catch (err) {
+          feedback('history-status', '重新转写提交失败：' + err.message, 'error');
+        } finally {
+          el.disabled = false;
+        }
+        return;
+      }
       if (el.dataset.action !== 'delete') return;
       const original = el.textContent;
       el.disabled = true;
