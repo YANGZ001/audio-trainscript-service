@@ -65,9 +65,19 @@ async function generateTranscript(
   });
 
   const raw = (result.text ?? '').trim();
-  log.info({ chars: raw.length }, 'transcript received');
+  const finishReason = result.candidates?.[0]?.finishReason;
+  log.info({ chars: raw.length, finishReason }, 'transcript received');
+  // A non-STOP finish (MAX_TOKENS, SAFETY, RECITATION, ...) or an empty body means
+  // the transcript is truncated or missing — reject it rather than save it as done.
+  if (finishReason !== 'STOP' || raw.length === 0) {
+    throw new TranscriptRejectedError(`Transcript rejected: finishReason=${finishReason ?? 'none'}, chars=${raw.length}`);
+  }
   return raw;
 }
+
+// Thrown when the model returned a response that is not a usable transcript.
+// The worker treats it as transient and steps down to the next model.
+export class TranscriptRejectedError extends Error {}
 
 // Gemini reads public YouTube videos directly from the URL — no download or upload.
 export async function transcribeYoutube(
